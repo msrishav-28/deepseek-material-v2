@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\materials_project_client.py
+# hypothesis_version: 6.148.2
+
+[0.0, 0.1, 1.0, 100, 401, 429, 500, 502, 503, 504, ',', 'Content-Type', 'GET', 'Invalid API key', 'Materials Project', 'POST', 'Rate limit exceeded', 'X-API-KEY', 'api_version', 'application/json', 'band_gap', 'bulk_modulus', 'data', 'density', 'density_atomic', 'elastic_tensor', 'elasticity', 'elements', 'energy_above_hull', 'formula', 'formula_pretty', 'g_vrh', 'http://', 'https://', 'is_magnetic', 'is_metal', 'is_stable', 'k_vrh', 'lattice', 'lattice_parameters', 'limit', 'material_id', 'materials/summary', 'nsites', 'retrieved_at', 'shear_modulus', 'source', 'space_group', 'structure', 'v1']

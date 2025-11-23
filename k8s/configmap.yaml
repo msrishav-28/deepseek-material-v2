@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ceramic-discovery-config
+  namespace: ceramic-discovery
+data:
+  # Application configuration
+  MAX_PARALLEL_JOBS: "8"
+  LOG_LEVEL: "INFO"
+  PYTHONUNBUFFERED: "1"
+  
+  # ML configuration
+  ML_RANDOM_SEED: "42"
+  ML_CV_FOLDS: "5"
+  ML_TARGET_R2_MIN: "0.65"
+  ML_TARGET_R2_MAX: "0.75"
+  ML_BOOTSTRAP_SAMPLES: "1000"
+  
+  # HPC configuration
+  HPC_SCHEDULER: "slurm"
+  HPC_PARTITION: "compute"
+  HPC_MAX_NODES: "16"
+  
+  # Materials Project API
+  MP_RATE_LIMIT_PER_SECOND: "10"
+  
+  # Storage paths
+  HDF5_DATA_PATH: "/data/hdf5"
+  RESULTS_PATH: "/results"
+  LOGS_PATH: "/logs"

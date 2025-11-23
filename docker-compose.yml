@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with pgvector extension
+  postgres:
+    image: ankane/pgvector:v0.5.1
+    container_name: ceramic-postgres
+    environment:
+      POSTGRES_DB: ceramic_materials
+      POSTGRES_USER: ceramic_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ceramic_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ceramic_user -d ceramic_materials"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis cache for results
+  redis:
+    image: redis:7.2-alpine
+    container_name: ceramic-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Main application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ceramic-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ceramic_user:${POSTGRES_PASSWORD:-ceramic_dev_password}@postgres:5432/ceramic_materials
+      REDIS_URL: redis://redis:6379/0
+      MATERIALS_PROJECT_API_KEY: ${MATERIALS_PROJECT_API_KEY}
+      PYTHONPATH: /opt/ceramic-armor-discovery
+    volumes:
+      - .:/opt/ceramic-armor-discovery
+      - hdf5_data:/opt/ceramic-armor-discovery/data/hdf5
+      - results:/opt/ceramic-armor-discovery/results
+    ports:
+      - "8888:8888"  # Jupyter
+    healthcheck:
+      test: ["CMD", "conda", "run", "-n", "ceramic-armor-discovery", "python", "-m", "ceramic_discovery.cli", "health", "--check-type", "readiness", "--json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: >
+      bash -c "
+        conda run -n ceramic-armor-discovery jupyter lab 
+        --ip=0.0.0.0 
+        --port=8888 
+        --no-browser 
+        --allow-root 
+        --NotebookApp.token='' 
+        --NotebookApp.password=''
+      "
+
+volumes:
+  postgres_data:
+  redis_data:
+  hdf5_data:
+  results:

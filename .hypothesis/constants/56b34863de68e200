@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\data_combiner.py
+# hypothesis_version: 6.148.2
+
+[298.15, ',', 'JARVIS-DFT', 'Literature', 'Materials Project', 'NIST-JANAF', 'Unknown', '_source_tracking', 'band_gap', 'density', 'energy_above_hull', 'formation_energy', 'formula', 'material_id', 'merged_from', 'metadata', 'primary_source', 'references', 'source', 'source_counts', 'source_tracking', 'sources', 'total_materials']

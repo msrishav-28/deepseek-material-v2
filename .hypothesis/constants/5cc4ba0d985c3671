@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\literature_database.py
+# hypothesis_version: 6.148.2
+
+[0.02, 0.03, 0.05, 0.1, 1.5, 2.0, 2.5, 3.0, 3.21, 4.0, 4.93, 5.0, 6.52, 6.73, 8.0, 10.0, 12.0, 12.2, 13.31, 15.0, 16.65, 18.0, 20.0, 20.5, 22.0, 22.7, 23.0, 25.0, 30.0, 33.0, 35.0, 50.0, 56.0, 57.5, 60.0, 69.0, 88.0, 91.0, 100.0, 110.0, 120.0, 141.0, 160.0, 180.0, 186.0, 188.0, 190.0, 200.0, 220.0, 230.0, 240.0, 250.0, 400.0, 450.0, 460.0, 873.0, 903.0, 1760.0, 2128.0, 2506.0, 2600.0, 2800.0, 3103.0, 3200.0, 3290.0, 3433.0, 3813.0, 4163.0, 'Hf', 'HfC', 'SiC', 'Ta', 'TiC', 'Zr', 'ZrC', '_std', 'bulk_modulus', 'bulk_modulus_std', 'density', 'density_std', 'hardness_vickers', 'hardness_vickers_std', 'materials', 'melting_point', 'melting_point_std', 'shear_modulus', 'shear_modulus_std', 'sources', 'thermal_conductivity', 'total_materials', 'total_properties', 'youngs_modulus', 'youngs_modulus_std']

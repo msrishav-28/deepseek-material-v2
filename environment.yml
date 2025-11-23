@@ -1,0 +1,60 @@
+name: ceramic-armor-discovery
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.11.5
+  
+  # Scientific Computing Stack
+  - numpy=1.24.3
+  - scipy=1.10.1
+  - pandas=2.0.3
+  
+  # Materials Science
+  - ase=3.22.1
+  - pymatgen=2023.7.20
+  - mp-api=0.37.5
+  
+  # Machine Learning
+  - scikit-learn=1.3.0
+  - xgboost=1.7.6
+  - optuna=3.3.0
+  
+  # Data Storage
+  - h5py=3.9.0
+  - sqlalchemy=2.0.19
+  - psycopg2=2.9.7
+  
+  # Workflow Management
+  - prefect=2.11.5
+  
+  # Visualization
+  - matplotlib=3.7.2
+  - seaborn=0.12.2
+  - plotly=5.16.1
+  
+  # Jupyter
+  - jupyter=1.0.0
+  - jupyterlab=4.0.5
+  - ipywidgets=8.1.0
+  
+  # Development Tools
+  - pytest=7.4.0
+  - pytest-cov=4.1.0
+  - black=23.7.0
+  - flake8=6.1.0
+  - mypy=1.5.0
+  
+  # Utilities
+  - click=8.1.7
+  - python-dotenv=1.0.0
+  - pyyaml=6.0.1
+  - tqdm=4.66.1
+  - redis-py=5.0.0
+  
+  # Pip packages
+  - pip=23.2.1
+  - pip:
+    - pgvector==0.2.2
+    - popper==2023.9.0

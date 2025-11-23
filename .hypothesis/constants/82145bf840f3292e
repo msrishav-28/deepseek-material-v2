@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\database_manager.py
+# hypothesis_version: 6.148.2
+
+[0.0, 1.0, 'DatabaseManager', 'Materials Project', 'band_gap', 'bulk_modulus_vrh', 'calculation_id', 'crystal_structure', 'decomposition_energy', 'density', 'efermi', 'elastic_tensor', 'energy_above_hull', 'functional', 'is_magnetic', 'is_metal', 'is_stable', 'materials_by_system', 'nsites', 'pseudopotential', 'shear_modulus_vrh', 'source_database', 'space_group_number', 'system', 'total_magnetization', 'total_materials', 'total_properties', 'volume']

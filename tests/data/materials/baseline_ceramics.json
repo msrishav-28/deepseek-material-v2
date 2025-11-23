@@ -1,0 +1,104 @@
+{
+  "materials": [
+    {
+      "material_id": "test-sic-baseline",
+      "formula": "SiC",
+      "energy_above_hull": 0.0,
+      "formation_energy_per_atom": -0.65,
+      "properties": {
+        "hardness": 28.0,
+        "fracture_toughness": 4.5,
+        "density": 3.21,
+        "youngs_modulus": 410.0,
+        "shear_modulus": 160.0,
+        "bulk_modulus": 220.0,
+        "poisson_ratio": 0.21,
+        "thermal_conductivity_25C": 120.0,
+        "thermal_conductivity_1000C": 45.0,
+        "thermal_expansion_coefficient": 4.5e-6,
+        "melting_point": 3003.0,
+        "band_gap": 2.3
+      }
+    },
+    {
+      "material_id": "test-b4c-baseline",
+      "formula": "B4C",
+      "energy_above_hull": 0.0,
+      "formation_energy_per_atom": -0.58,
+      "properties": {
+        "hardness": 35.0,
+        "fracture_toughness": 3.5,
+        "density": 2.52,
+        "youngs_modulus": 450.0,
+        "shear_modulus": 185.0,
+        "bulk_modulus": 240.0,
+        "poisson_ratio": 0.18,
+        "thermal_conductivity_25C": 30.0,
+        "thermal_conductivity_1000C": 20.0,
+        "thermal_expansion_coefficient": 5.6e-6,
+        "melting_point": 2723.0,
+        "band_gap": 2.1
+      }
+    },
+    {
+      "material_id": "test-wc-baseline",
+      "formula": "WC",
+      "energy_above_hull": 0.0,
+      "formation_energy_per_atom": -0.42,
+      "properties": {
+        "hardness": 22.0,
+        "fracture_toughness": 8.0,
+        "density": 15.63,
+        "youngs_modulus": 700.0,
+        "shear_modulus": 280.0,
+        "bulk_modulus": 400.0,
+        "poisson_ratio": 0.24,
+        "thermal_conductivity_25C": 110.0,
+        "thermal_conductivity_1000C": 80.0,
+        "thermal_expansion_coefficient": 5.2e-6,
+        "melting_point": 3143.0,
+        "band_gap": 0.0
+      }
+    },
+    {
+      "material_id": "test-tic-baseline",
+      "formula": "TiC",
+      "energy_above_hull": 0.0,
+      "formation_energy_per_atom": -0.72,
+      "properties": {
+        "hardness": 28.0,
+        "fracture_toughness": 5.0,
+        "density": 4.93,
+        "youngs_modulus": 460.0,
+        "shear_modulus": 188.0,
+        "bulk_modulus": 240.0,
+        "poisson_ratio": 0.19,
+        "thermal_conductivity_25C": 30.0,
+        "thermal_conductivity_1000C": 25.0,
+        "thermal_expansion_coefficient": 7.4e-6,
+        "melting_point": 3433.0,
+        "band_gap": 0.0
+      }
+    },
+    {
+      "material_id": "test-al2o3-baseline",
+      "formula": "Al2O3",
+      "energy_above_hull": 0.0,
+      "formation_energy_per_atom": -1.12,
+      "properties": {
+        "hardness": 18.0,
+        "fracture_toughness": 4.0,
+        "density": 3.98,
+        "youngs_modulus": 380.0,
+        "shear_modulus": 150.0,
+        "bulk_modulus": 250.0,
+        "poisson_ratio": 0.23,
+        "thermal_conductivity_25C": 35.0,
+        "thermal_conductivity_1000C": 6.0,
+        "thermal_expansion_coefficient": 8.1e-6,
+        "melting_point": 2345.0,
+        "band_gap": 8.8
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\jarvis_client.py
+# hypothesis_version: 6.148.2
+
+[0.0, '-', 'C', 'JARVIS-DFT', 'JVASP', 'atoms', 'band_gap', 'bandgap', 'bulk_modulus', 'bulk_modulus_kv', 'density', 'ehull', 'energy_above_hull', 'file_path', 'formula', 'jid', 'mbj_bandgap', 'natoms', 'optb88vdw_bandgap', 'r', 'shear_modulus', 'shear_modulus_gv', 'source', 'spacegroup', 'total_materials']

@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\database_schema.py
+# hypothesis_version: 6.148.2
+
+[100, 200, 'DFTCalculation', 'Material', 'MaterialProperty', 'Materials Project', 'all, delete-orphan', 'dft_calculations', 'experimental_data', 'material', 'material_properties', 'materials', 'materials.id', 'properties', 'property_provenance', 'screening_results']

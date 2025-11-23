@@ -1,0 +1,166 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hdf5-data-pvc
+  namespace: ceramic-discovery
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: results-pvc
+  namespace: ceramic-discovery
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ceramic-discovery-app
+  namespace: ceramic-discovery
+  labels:
+    app: ceramic-discovery
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8888
+      targetPort: 8888
+      protocol: TCP
+      name: jupyter
+  selector:
+    app: ceramic-discovery
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ceramic-discovery-app
+  namespace: ceramic-discovery
+  labels:
+    app: ceramic-discovery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ceramic-discovery
+  template:
+    metadata:
+      labels:
+        app: ceramic-discovery
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z postgres 5432; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+      - name: wait-for-redis
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z redis 6379; do
+            echo "Waiting for redis..."
+            sleep 2
+          done
+      containers:
+      - name: app
+        image: ceramic-discovery:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8888
+          name: jupyter
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ceramic-discovery-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: ceramic-discovery-secrets
+              key: REDIS_URL
+        - name: MATERIALS_PROJECT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ceramic-discovery-secrets
+              key: MATERIALS_PROJECT_API_KEY
+        envFrom:
+        - configMapRef:
+            name: ceramic-discovery-config
+        volumeMounts:
+        - name: hdf5-data
+          mountPath: /opt/ceramic-armor-discovery/data/hdf5
+        - name: results
+          mountPath: /opt/ceramic-armor-discovery/results
+        - name: logs
+          mountPath: /opt/ceramic-armor-discovery/logs
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        livenessProbe:
+          exec:
+            command:
+            - conda
+            - run
+            - -n
+            - ceramic-armor-discovery
+            - python
+            - -m
+            - ceramic_discovery.cli
+            - health
+            - --check-type
+            - liveness
+            - --json
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - conda
+            - run
+            - -n
+            - ceramic-armor-discovery
+            - python
+            - -m
+            - ceramic_discovery.cli
+            - health
+            - --check-type
+            - readiness
+            - --json
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: hdf5-data
+        persistentVolumeClaim:
+          claimName: hdf5-data-pvc
+      - name: results
+        persistentVolumeClaim:
+          claimName: results-pvc
+      - name: logs
+        emptyDir: {}

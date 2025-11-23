@@ -1,0 +1,4 @@
+# file: C:\Users\msris\Downloads\deepseek v2\src\ceramic_discovery\dft\data_validator.py
+# hypothesis_version: 6.148.2
+
+[-20.0, 0.0, 0.001, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 1.5, 3.0, 5.0, 10.0, 15.0, 25.0, 50.0, 300.0, 500.0, 1000.0, 'GPa', 'MPa·m^0.5', 'W/m·K', 'band_gap', 'bulk_modulus', 'density', 'eV', 'eV/atom', 'energy_above_hull', 'errors', 'formula', 'fracture_toughness', 'g/cm³', 'hardness', 'individual_results', 'invalid_materials', 'is_metal', 'is_stable', 'material_id', 'message', 'shear_modulus', 'thermal_conductivity', 'total_errors', 'total_materials', 'total_warnings', 'unique_errors', 'unique_warnings', 'valid', 'valid_materials', 'warning', 'warnings', 'youngs_modulus']
