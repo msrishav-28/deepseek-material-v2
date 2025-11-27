@@ -18,6 +18,16 @@ from .screening_engine import (
     RankingCriterion,
 )
 
+from .application_ranker import (
+    ApplicationRanker,
+    ApplicationSpec,
+    RankedMaterial,
+)
+
+from .sic_alloy_designer_pipeline import (
+    SiCAlloyDesignerPipeline,
+)
+
 __all__ = [
     # Workflow orchestration
     'WorkflowOrchestrator',
@@ -34,4 +44,12 @@ __all__ = [
     'ScreeningConfig',
     'ScreeningResults',
     'RankingCriterion',
+    
+    # Application ranking
+    'ApplicationRanker',
+    'ApplicationSpec',
+    'RankedMaterial',
+    
+    # SiC Alloy Designer Pipeline
+    'SiCAlloyDesignerPipeline',
 ]

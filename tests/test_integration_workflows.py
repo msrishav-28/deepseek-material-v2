@@ -12,7 +12,7 @@ from ceramic_discovery.dft import (
 )
 from ceramic_discovery.ceramics import CeramicSystemFactory
 from ceramic_discovery.ml import (
-    FeatureEngineer,
+    FeatureEngineeringPipeline,
     ModelTrainer,
     UncertaintyQuantifier,
 )
@@ -32,7 +32,7 @@ class TestEndToEndScreeningWorkflow:
         """Test complete workflow: DFT → stability → ML → prediction."""
         # 1. Initialize components
         stability_analyzer = StabilityAnalyzer()
-        feature_engineer = FeatureEngineer()
+        feature_engineer = FeatureEngineeringPipeline()
         validator = PhysicalPlausibilityValidator()
 
         # 2. Create test materials (simulating DFT data)
@@ -128,7 +128,7 @@ class TestEndToEndScreeningWorkflow:
         )
 
         # 1. Feature engineering
-        feature_engineer = FeatureEngineer()
+        feature_engineer = FeatureEngineeringPipeline()
         X_features = feature_engineer.create_feature_matrix(X_train)
 
         # 2. Train model

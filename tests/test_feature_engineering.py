@@ -304,3 +304,250 @@ class TestFeatureEngineeringPipeline:
         X_test_transformed = pipeline.transform(X_test)
         
         assert list(X_test_transformed.columns) == pipeline.selected_features
+
+
+class TestEnhancedFeatureEngineeringPipeline:
+    """Test enhanced feature engineering pipeline with composition and structure descriptors."""
+    
+    @pytest.fixture
+    def sample_data_with_formulas(self):
+        """Create sample data with formulas and properties."""
+        np.random.seed(42)
+        n_samples = 50
+        
+        formulas = pd.Series([
+            'SiC', 'TiC', 'B4C', 'ZrC', 'HfC',
+            'TaC', 'NbC', 'WC', 'VC', 'Cr3C2'
+        ] * 5)
+        
+        data = pd.DataFrame({
+            'density': np.random.uniform(2.0, 5.0, n_samples),
+            'hardness_vickers': np.random.uniform(20.0, 35.0, n_samples),
+            'bulk_modulus_vrh': np.random.uniform(200.0, 400.0, n_samples),
+            'shear_modulus_vrh': np.random.uniform(150.0, 250.0, n_samples),
+            'formation_energy_per_atom': np.random.uniform(-3.0, -1.0, n_samples),
+            'band_gap': np.random.uniform(0.0, 5.0, n_samples),
+        })
+        
+        return data, formulas
+    
+    def test_composition_descriptors_integration(self, sample_data_with_formulas):
+        """Test end-to-end feature extraction with composition descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            scaling_method='standard'
+        )
+        
+        X_transformed = pipeline.fit_transform(data, formulas=formulas)
+        
+        # Check that composition descriptors were added
+        # Note: num_elements may be removed due to low variance in carbides
+        has_composition = any('composition' in f or 'num_atoms' in f or 'mean_' in f 
+                             for f in pipeline.selected_features)
+        assert has_composition, "No composition descriptors found in selected features"
+        
+        # Check that original features are still present
+        assert any('density' in f or 'hardness' in f for f in pipeline.selected_features)
+        
+        # Check that output is properly scaled
+        assert not X_transformed.isna().any().any()
+    
+    def test_structure_descriptors_integration(self, sample_data_with_formulas):
+        """Test end-to-end feature extraction with structure descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_structure_descriptors=True,
+            scaling_method='standard'
+        )
+        
+        X_transformed = pipeline.fit_transform(data, formulas=formulas)
+        
+        # Check that structure descriptors were added
+        assert 'pugh_ratio' in pipeline.selected_features or 'pugh_ratio' in X_transformed.columns
+        assert 'youngs_modulus' in pipeline.selected_features or 'youngs_modulus' in X_transformed.columns
+        
+        # Check that original features are still present
+        assert any('density' in f or 'hardness' in f for f in pipeline.selected_features)
+        
+        # Check that output is properly scaled
+        assert not X_transformed.isna().any().any()
+    
+    def test_both_descriptors_integration(self, sample_data_with_formulas):
+        """Test end-to-end feature extraction with both composition and structure descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            include_structure_descriptors=True,
+            scaling_method='standard'
+        )
+        
+        X_transformed = pipeline.fit_transform(data, formulas=formulas)
+        
+        # Check that both types of descriptors were added
+        has_composition = any('composition' in f or 'num_elements' in f or 'mean_' in f 
+                             for f in pipeline.selected_features)
+        has_structure = any('pugh' in f or 'youngs' in f or 'poisson' in f 
+                           for f in pipeline.selected_features)
+        
+        assert has_composition or has_structure
+        
+        # Check that output has more features than input
+        assert len(pipeline.selected_features) >= len(data.columns)
+        
+        # Check that output is properly scaled
+        assert not X_transformed.isna().any().any()
+    
+    def test_feature_validation_with_new_descriptors(self, sample_data_with_formulas):
+        """Test feature validation with composition and structure features."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            include_structure_descriptors=True
+        )
+        
+        # Should not raise validation errors
+        X_transformed = pipeline.fit_transform(data, formulas=formulas)
+        
+        # Validate that all features are fundamental (Tier 1-2)
+        for feature in pipeline.selected_features:
+            if feature in pipeline.feature_metadata:
+                assert pipeline.feature_metadata[feature].is_fundamental
+    
+    def test_backward_compatibility_without_descriptors(self, sample_data_with_formulas):
+        """Test backward compatibility with existing features when descriptors disabled."""
+        data, formulas = sample_data_with_formulas
+        
+        # Pipeline without new descriptors
+        pipeline_old = FeatureEngineeringPipeline(
+            include_composition_descriptors=False,
+            include_structure_descriptors=False
+        )
+        
+        X_old = pipeline_old.fit_transform(data)
+        
+        # Should work exactly as before
+        assert set(X_old.columns) == set(pipeline_old.selected_features)
+        assert len(X_old.columns) <= len(data.columns)
+        
+        # Check that no new descriptors were added
+        assert not any('composition' in f for f in X_old.columns)
+        assert not any('pugh' in f for f in X_old.columns)
+    
+    def test_composition_descriptors_without_formulas(self, sample_data_with_formulas):
+        """Test that composition descriptors are skipped when formulas not provided."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True
+        )
+        
+        # Fit without formulas - should warn and skip composition descriptors
+        with pytest.warns(UserWarning, match="no formulas provided"):
+            X_transformed = pipeline.fit_transform(data)
+        
+        # Should not have composition descriptors
+        assert not any('composition' in f for f in pipeline.selected_features)
+        assert not any('num_elements' in f for f in pipeline.selected_features)
+    
+    def test_transform_consistency_with_descriptors(self, sample_data_with_formulas):
+        """Test that transform produces consistent results with descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            include_structure_descriptors=True
+        )
+        
+        # Split data
+        X_train = data.iloc[:40]
+        X_test = data.iloc[40:]
+        formulas_train = formulas.iloc[:40]
+        formulas_test = formulas.iloc[40:]
+        
+        # Fit on train
+        pipeline.fit(X_train, formulas=formulas_train)
+        
+        # Transform test
+        X_test_transformed = pipeline.transform(X_test, formulas=formulas_test)
+        
+        # Check that same features are present
+        assert list(X_test_transformed.columns) == pipeline.selected_features
+        
+        # Check that output is properly scaled
+        assert not X_test_transformed.isna().any().any()
+    
+    def test_feature_metadata_tracking_with_descriptors(self, sample_data_with_formulas):
+        """Test that feature metadata is properly tracked for new descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            include_structure_descriptors=True
+        )
+        
+        pipeline.fit(data, formulas=formulas)
+        
+        # Check that metadata exists for all selected features
+        for feature in pipeline.selected_features:
+            assert feature in pipeline.feature_metadata
+            metadata = pipeline.feature_metadata[feature]
+            
+            # Check that category is set for new descriptors
+            if 'composition' in feature or 'num_' in feature or 'mean_' in feature:
+                assert metadata.category == 'composition'
+            elif feature in ['pugh_ratio', 'youngs_modulus', 'poisson_ratio', 'energy_density']:
+                assert metadata.category == 'structure'
+    
+    def test_missing_formulas_in_data(self, sample_data_with_formulas):
+        """Test handling of missing formulas in dataset."""
+        data, formulas = sample_data_with_formulas
+        
+        # Add some missing formulas
+        formulas_with_missing = formulas.copy()
+        formulas_with_missing.iloc[0] = np.nan
+        formulas_with_missing.iloc[5] = None
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_composition_descriptors=True,
+            handle_missing='drop'
+        )
+        
+        # Should handle missing formulas gracefully
+        X_transformed = pipeline.fit_transform(data, formulas=formulas_with_missing)
+        
+        # Should have dropped rows with missing formulas
+        assert len(X_transformed) < len(data)
+    
+    def test_physical_bounds_with_structure_descriptors(self, sample_data_with_formulas):
+        """Test physical bounds validation with structure descriptors."""
+        data, formulas = sample_data_with_formulas
+        
+        pipeline = FeatureEngineeringPipeline(
+            include_structure_descriptors=True
+        )
+        
+        pipeline.fit(data, formulas=formulas)
+        
+        # Get the enhanced data before scaling
+        data_enhanced = data.copy()
+        data_enhanced = pipeline._add_structure_descriptors(data_enhanced)
+        
+        # Validate physical bounds
+        custom_bounds = {
+            'pugh_ratio': (0.5, 5.0),
+            'poisson_ratio': (-1.0, 0.5),
+            'youngs_modulus': (0.0, 1000.0),
+        }
+        
+        is_valid, violations = pipeline.validate_physical_bounds(data_enhanced, custom_bounds)
+        
+        # Should be valid or have specific violations
+        if not is_valid:
+            # Check that violations are reasonable
+            for violation in violations:
+                assert any(prop in violation for prop in custom_bounds.keys())

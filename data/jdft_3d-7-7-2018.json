@@ -1,0 +1,26 @@
+[
+  {
+    "jid": "JVASP-1234",
+    "formula": "SiC",
+    "elements": [
+      "Si",
+      "C"
+    ],
+    "formation_energy_peratom": -1.234,
+    "optb88vdw_bandgap": 2.3,
+    "bulk_modulus_kv": 220.5,
+    "shear_modulus_gv": 180.2
+  },
+  {
+    "jid": "JVASP-5678",
+    "formula": "TiC",
+    "elements": [
+      "Ti",
+      "C"
+    ],
+    "formation_energy_peratom": -1.456,
+    "optb88vdw_bandgap": 0.0,
+    "bulk_modulus_kv": 240.8,
+    "shear_modulus_gv": 175.3
+  }
+]

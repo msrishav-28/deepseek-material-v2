@@ -8,7 +8,7 @@ from ceramic_discovery.ceramics import (
     CeramicSystemFactory,
     CompositeCalculator,
 )
-from ceramic_discovery.ml import FeatureEngineer, ModelTrainer
+from ceramic_discovery.ml import FeatureEngineeringPipeline, ModelTrainer
 from ceramic_discovery.ballistics import BallisticPredictor
 from ceramic_discovery.validation import PhysicalPlausibilityValidator
 
@@ -289,7 +289,7 @@ class TestFeatureEngineeringCorrectness:
     @pytest.mark.scientific
     def test_tier_separation(self):
         """Test that only Tier 1-2 fundamental properties are used."""
-        engineer = FeatureEngineer()
+        engineer = FeatureEngineeringPipeline()
 
         # Get allowed features
         tier1_features = engineer.get_tier1_features()
@@ -313,7 +313,7 @@ class TestFeatureEngineeringCorrectness:
     @pytest.mark.scientific
     def test_no_circular_dependencies(self):
         """Test that features don't have circular dependencies."""
-        engineer = FeatureEngineer()
+        engineer = FeatureEngineeringPipeline()
 
         # If predicting V50, should not use V50 or derived metrics as features
         features_for_v50 = engineer.get_features_for_target("v50")
@@ -324,7 +324,7 @@ class TestFeatureEngineeringCorrectness:
     @pytest.mark.scientific
     def test_feature_scaling_preserves_relationships(self):
         """Test that feature scaling preserves relationships."""
-        engineer = FeatureEngineer()
+        engineer = FeatureEngineeringPipeline()
 
         # Original data
         data = {

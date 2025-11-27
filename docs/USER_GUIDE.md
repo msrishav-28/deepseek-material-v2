@@ -15,8 +15,11 @@
 3. [Workflow 2: Property Prediction](#workflow-2-property-prediction)
 4. [Workflow 3: Ballistic Performance Analysis](#workflow-3-ballistic-performance-analysis)
 5. [Workflow 4: Mechanism Investigation](#workflow-4-mechanism-investigation)
-6. [Advanced Topics](#advanced-topics)
-7. [Troubleshooting](#troubleshooting)
+6. [Workflow 5: Multi-Source Data Integration](#workflow-5-multi-source-data-integration)
+7. [Workflow 6: Application-Specific Material Ranking](#workflow-6-application-specific-material-ranking)
+8. [Workflow 7: Experimental Planning](#workflow-7-experimental-planning)
+9. [Advanced Topics](#advanced-topics)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -505,6 +508,413 @@ Conclusion:
 
 Recommendation:
   Prioritize dopants that maintain or enhance thermal conductivity
+```
+
+---
+
+## Workflow 5: Multi-Source Data Integration
+
+### Objective
+Load and combine data from multiple sources (Materials Project, JARVIS-DFT, NIST-JANAF, literature) to create a comprehensive materials database.
+
+### Step 1: Load JARVIS-DFT Data
+
+```python
+from ceramic_discovery.dft import JarvisClient
+
+# Initialize JARVIS client
+client = JarvisClient(jarvis_file_path="./data/jdft_3d-7-7-2018.json")
+
+# Load carbide materials
+metal_elements = {"Si", "Ti", "Zr", "Hf", "Ta", "W", "B"}
+carbides = client.load_carbides(metal_elements=metal_elements)
+
+print(f"Loaded {len(carbides)} carbide materials from JARVIS")
+
+# Display sample
+for material in carbides[:3]:
+    print(f"  {material.formula}: E_f = {material.formation_energy_per_atom:.3f} eV/atom")
+```
+
+### Step 2: Load NIST-JANAF Data
+
+```python
+from ceramic_discovery.dft import NISTClient
+
+# Initialize NIST client
+nist_client = NISTClient()
+
+# Load thermochemical data for SiC
+sic_thermo = nist_client.load_thermochemical_data(
+    filepath="./data/nist/SiC_thermochemical.txt",
+    material_name="SiC"
+)
+
+# Interpolate property at specific temperature
+cp_1000K = nist_client.interpolate_property(
+    data=sic_thermo,
+    temperature=1000.0,
+    property_name="Cp"
+)
+
+print(f"SiC heat capacity at 1000K: {cp_1000K:.2f} J/(mol·K)")
+```
+
+### Step 3: Access Literature Database
+
+```python
+from ceramic_discovery.dft import LiteratureDatabase
+
+# Initialize literature database
+lit_db = LiteratureDatabase()
+
+# Get available materials
+available = lit_db.list_available_materials()
+print(f"Literature data available for: {', '.join(available)}")
+
+# Get property with uncertainty
+hardness, uncertainty = lit_db.get_property_with_uncertainty(
+    formula="SiC",
+    property_name="hardness_vickers"
+)
+
+print(f"SiC hardness: {hardness:.0f} ± {uncertainty:.0f} HV")
+```
+
+### Step 4: Combine All Data Sources
+
+```python
+from ceramic_discovery.dft import DataCombiner, MaterialsProjectClient
+
+# Load Materials Project data
+mp_client = MaterialsProjectClient(api_key="your_api_key")
+mp_data = mp_client.search_materials("SiC")
+
+# Combine all sources
+combiner = DataCombiner()
+combined_data = combiner.combine_sources(
+    mp_data=mp_data,
+    jarvis_data=carbides,
+    nist_data={"SiC": sic_thermo},
+    literature_data=lit_db.get_all_data()
+)
+
+print(f"Combined dataset: {len(combined_data)} materials")
+print(f"Average properties per material: {combined_data['property_count'].mean():.1f}")
+
+# Save combined data
+combined_data.to_csv("./results/combined_materials_database.csv", index=False)
+```
+
+### Expected Output
+
+```
+Multi-Source Data Integration Results
+======================================
+
+Data Sources Loaded:
+  Materials Project: 150 materials
+  JARVIS-DFT: 425 carbides
+  NIST-JANAF: 8 materials with temperature-dependent data
+  Literature: 12 materials with experimental validation
+
+Combined Dataset:
+  Total unique materials: 485
+  Materials with multiple sources: 95
+  Average data completeness: 78%
+
+Top Materials by Data Completeness:
+1. SiC: 95% (4 sources)
+2. TiC: 88% (3 sources)
+3. ZrC: 85% (3 sources)
+
+Data saved to: ./results/combined_materials_database.csv
+```
+
+---
+
+## Workflow 6: Application-Specific Material Ranking
+
+### Objective
+Rank materials for specific applications (aerospace, cutting tools, thermal barriers, etc.) based on property requirements.
+
+### Step 1: Initialize Application Ranker
+
+```python
+from ceramic_discovery.screening import ApplicationRanker
+
+# Initialize with default applications
+ranker = ApplicationRanker()
+
+# View available applications
+applications = ranker.list_applications()
+for app in applications:
+    print(f"  - {app}")
+```
+
+### Step 2: Rank Materials for Single Application
+
+```python
+# Load materials
+materials = combined_data.to_dict('records')
+
+# Rank for aerospace hypersonic application
+aerospace_ranking = ranker.rank_materials(
+    materials=materials,
+    application="aerospace_hypersonic"
+)
+
+# Display top candidates
+print("\nTop 5 Candidates for Aerospace Hypersonic:")
+for i, ranked in enumerate(aerospace_ranking[:5], 1):
+    print(f"{i}. {ranked.formula}")
+    print(f"   Overall Score: {ranked.overall_score:.3f}")
+    print(f"   Hardness Score: {ranked.component_scores.get('hardness', 0):.3f}")
+    print(f"   Thermal Cond Score: {ranked.component_scores.get('thermal_cond', 0):.3f}")
+    print(f"   Confidence: {ranked.confidence:.2f}")
+    print()
+```
+
+### Step 3: Rank for All Applications
+
+```python
+# Batch ranking for all applications
+all_rankings = ranker.rank_for_all_applications(materials=materials)
+
+# Display summary
+print("\nApplication Ranking Summary:")
+print(all_rankings.groupby('application')['overall_score'].describe())
+
+# Find materials that rank highly across multiple applications
+multi_app_leaders = all_rankings[all_rankings['rank'] <= 10].groupby('formula').size()
+multi_app_leaders = multi_app_leaders.sort_values(ascending=False)
+
+print("\nMaterials ranking in top 10 for multiple applications:")
+for formula, count in multi_app_leaders.head(5).items():
+    print(f"  {formula}: Top 10 in {count} applications")
+```
+
+### Step 4: Visualize Rankings
+
+```python
+from ceramic_discovery.analysis import Visualizer
+
+viz = Visualizer()
+
+# Create ranking comparison plot
+viz.application_ranking_plot(
+    rankings=all_rankings,
+    top_n=10,
+    output="./results/application_rankings.png"
+)
+
+# Create radar chart for top material
+top_material = aerospace_ranking[0]
+viz.property_radar_chart(
+    material=top_material,
+    applications=["aerospace_hypersonic", "cutting_tools", "thermal_barriers"],
+    output=f"./results/{top_material.formula}_radar.png"
+)
+```
+
+### Expected Output
+
+```
+Application-Specific Ranking Results
+====================================
+
+Top Candidates by Application:
+
+Aerospace Hypersonic:
+1. HfC: Score 0.892 (Confidence: 0.95)
+2. ZrC: Score 0.875 (Confidence: 0.93)
+3. TiC: Score 0.848 (Confidence: 0.91)
+
+Cutting Tools:
+1. TiC: Score 0.915 (Confidence: 0.94)
+2. WC: Score 0.901 (Confidence: 0.96)
+3. B4C: Score 0.887 (Confidence: 0.92)
+
+Thermal Barriers:
+1. ZrC: Score 0.856 (Confidence: 0.89)
+2. HfC: Score 0.842 (Confidence: 0.91)
+3. SiC: Score 0.825 (Confidence: 0.95)
+
+Multi-Application Leaders:
+  HfC: Top 10 in 4 applications
+  ZrC: Top 10 in 4 applications
+  TiC: Top 10 in 3 applications
+```
+
+---
+
+## Workflow 7: Experimental Planning
+
+### Objective
+Generate experimental design recommendations for synthesis and characterization of top material candidates.
+
+### Step 1: Select Candidates for Experimental Validation
+
+```python
+from ceramic_discovery.validation import ExperimentalPlanner
+
+# Initialize planner
+planner = ExperimentalPlanner()
+
+# Select top candidates from ranking
+top_candidates = aerospace_ranking[:5]
+
+print(f"Planning experiments for {len(top_candidates)} candidates")
+```
+
+### Step 2: Design Synthesis Protocols
+
+```python
+# Generate synthesis recommendations for each candidate
+synthesis_plans = []
+
+for candidate in top_candidates:
+    # Design synthesis protocol
+    methods = planner.design_synthesis_protocol(
+        formula=candidate.formula,
+        properties=candidate.properties
+    )
+    
+    synthesis_plans.append({
+        'formula': candidate.formula,
+        'methods': methods
+    })
+    
+    print(f"\nSynthesis Methods for {candidate.formula}:")
+    for method in methods:
+        print(f"  - {method.method}")
+        print(f"    Temperature: {method.temperature_K:.0f} K")
+        print(f"    Pressure: {method.pressure_MPa:.0f} MPa")
+        print(f"    Time: {method.time_hours:.1f} hours")
+        print(f"    Difficulty: {method.difficulty}")
+        print(f"    Cost Factor: {method.cost_factor:.1f}x")
+```
+
+### Step 3: Design Characterization Plans
+
+```python
+# Design characterization plan
+target_properties = [
+    "hardness",
+    "fracture_toughness",
+    "thermal_conductivity",
+    "density",
+    "phase_composition"
+]
+
+characterization_plans = []
+
+for candidate in top_candidates:
+    techniques = planner.design_characterization_plan(
+        formula=candidate.formula,
+        target_properties=target_properties
+    )
+    
+    characterization_plans.append({
+        'formula': candidate.formula,
+        'techniques': techniques
+    })
+    
+    print(f"\nCharacterization Plan for {candidate.formula}:")
+    for tech in techniques:
+        print(f"  - {tech.technique}: {tech.purpose}")
+        print(f"    Time: {tech.estimated_time_hours:.1f} hours")
+        print(f"    Cost: ${tech.estimated_cost_dollars:.0f}")
+```
+
+### Step 4: Estimate Resources
+
+```python
+# Estimate resources for each candidate
+resource_estimates = []
+
+for i, candidate in enumerate(top_candidates):
+    estimate = planner.estimate_resources(
+        synthesis_methods=synthesis_plans[i]['methods'],
+        characterization_plan=characterization_plans[i]['techniques']
+    )
+    
+    resource_estimates.append({
+        'formula': candidate.formula,
+        'estimate': estimate
+    })
+    
+    print(f"\nResource Estimate for {candidate.formula}:")
+    print(f"  Timeline: {estimate.timeline_months:.1f} months")
+    print(f"  Estimated Cost: ${estimate.estimated_cost_k_dollars:.1f}K")
+    print(f"  Required Equipment: {', '.join(estimate.required_equipment[:3])}")
+    print(f"  Required Expertise: {', '.join(estimate.required_expertise)}")
+    print(f"  Confidence: {estimate.confidence_level:.2f}")
+```
+
+### Step 5: Generate Experimental Protocol Document
+
+```python
+from ceramic_discovery.reporting import ReportGenerator
+
+# Generate comprehensive experimental protocol
+generator = ReportGenerator()
+
+protocol_report = generator.generate_experimental_protocol_report(
+    candidates=top_candidates,
+    synthesis_plans=synthesis_plans,
+    characterization_plans=characterization_plans,
+    resource_estimates=resource_estimates,
+    output_dir="./results/experimental_protocols"
+)
+
+print(f"\nExperimental protocol report generated: {protocol_report}")
+```
+
+### Expected Output
+
+```
+Experimental Planning Results
+=============================
+
+Candidate: HfC
+
+Synthesis Methods:
+1. Hot Pressing
+   - Temperature: 2273 K (2000°C)
+   - Pressure: 30 MPa
+   - Time: 2.0 hours
+   - Difficulty: Medium
+   - Cost Factor: 1.5x
+
+2. Spark Plasma Sintering
+   - Temperature: 2073 K (1800°C)
+   - Pressure: 50 MPa
+   - Time: 0.5 hours
+   - Difficulty: Hard
+   - Cost Factor: 2.5x
+
+Characterization Plan:
+- XRD: Phase identification and purity (4 hours, $500)
+- SEM: Microstructure analysis (6 hours, $800)
+- Hardness Testing: Vickers hardness (2 hours, $200)
+- Thermal Conductivity: Laser flash method (8 hours, $1,500)
+- Density: Archimedes method (1 hour, $100)
+
+Resource Estimate:
+- Timeline: 4.5 months
+- Estimated Cost: $18.5K
+- Required Equipment: Hot press, XRD, SEM, Hardness tester
+- Required Expertise: Ceramic processing, Materials characterization
+- Risk Factors: High temperature processing, Hafnium precursor cost
+- Confidence: 0.85
+
+Total Program Estimate (5 candidates):
+- Timeline: 6-8 months (parallel processing)
+- Total Cost: $75-90K
+- Success Probability: 80%
+
+Protocol documents saved to: ./results/experimental_protocols/
 ```
 
 ---

@@ -18,6 +18,12 @@ from ceramic_discovery.ml.uncertainty_quantification import (
     PredictionWithUncertainty,
     UncertaintyMetrics,
 )
+from ceramic_discovery.ml.composition_descriptors import (
+    CompositionDescriptorCalculator,
+)
+from ceramic_discovery.ml.structure_descriptors import (
+    StructureDescriptorCalculator,
+)
 
 __all__ = [
     'FeatureEngineeringPipeline',
@@ -32,4 +38,6 @@ __all__ = [
     'ConfidenceIntervalReporter',
     'PredictionWithUncertainty',
     'UncertaintyMetrics',
+    'CompositionDescriptorCalculator',
+    'StructureDescriptorCalculator',
 ]

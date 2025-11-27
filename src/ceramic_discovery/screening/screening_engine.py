@@ -21,6 +21,7 @@ except ImportError:
 from ..dft.stability_analyzer import StabilityAnalyzer, StabilityResult
 from ..ml.model_trainer import TrainedModel
 from ..ceramics.ceramic_system import CeramicSystem
+from .application_ranker import ApplicationRanker, RankedMaterial
 
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,9 @@ class MaterialCandidate:
     cost_efficiency_score: float = 0.0
     combined_score: float = 0.0
     
+    # Application-specific scores
+    application_scores: Optional[Dict[str, float]] = None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -89,6 +93,7 @@ class MaterialCandidate:
             'performance_score': self.performance_score,
             'cost_efficiency_score': self.cost_efficiency_score,
             'combined_score': self.combined_score,
+            'application_scores': self.application_scores,
         }
 
 
@@ -110,6 +115,11 @@ class ScreeningConfig:
     performance_weight: float = 0.4
     cost_weight: float = 0.2
     
+    # Application-based ranking
+    enable_application_ranking: bool = False
+    selected_applications: Optional[List[str]] = None
+    application_ranking_weight: float = 0.0  # Weight for application scores in combined ranking
+    
     # Batch processing
     batch_size: int = 100
     
@@ -119,9 +129,23 @@ class ScreeningConfig:
     
     def validate(self) -> None:
         """Validate configuration."""
-        total_weight = self.stability_weight + self.performance_weight + self.cost_weight
-        if not np.isclose(total_weight, 1.0):
-            raise ValueError(f"Ranking weights must sum to 1.0, got {total_weight}")
+        if self.enable_application_ranking:
+            # When application ranking is enabled, weights should sum to 1.0 including application weight
+            total_weight = (
+                self.stability_weight + 
+                self.performance_weight + 
+                self.cost_weight + 
+                self.application_ranking_weight
+            )
+            if not np.isclose(total_weight, 1.0):
+                raise ValueError(
+                    f"Ranking weights (including application_ranking_weight) must sum to 1.0, got {total_weight}"
+                )
+        else:
+            # Without application ranking, original weights should sum to 1.0
+            total_weight = self.stability_weight + self.performance_weight + self.cost_weight
+            if not np.isclose(total_weight, 1.0):
+                raise ValueError(f"Ranking weights must sum to 1.0, got {total_weight}")
 
 
 @dataclass
@@ -138,6 +162,9 @@ class ScreeningResults:
     avg_stability_score: float = 0.0
     avg_performance_score: float = 0.0
     avg_cost_score: float = 0.0
+    
+    # Application-specific rankings
+    application_rankings: Optional[Dict[str, List[RankedMaterial]]] = None
     
     def to_dataframe(self) -> pd.DataFrame:
         """Convert results to DataFrame."""
@@ -188,7 +215,8 @@ class ScreeningEngine:
         stability_analyzer: StabilityAnalyzer,
         ml_model: Optional[TrainedModel] = None,
         config: Optional[ScreeningConfig] = None,
-        redis_client: Optional[Any] = None
+        redis_client: Optional[Any] = None,
+        application_ranker: Optional[ApplicationRanker] = None
     ):
         """
         Initialize screening engine.
@@ -198,11 +226,18 @@ class ScreeningEngine:
             ml_model: Trained ML model for property prediction
             config: Screening configuration
             redis_client: Redis client for caching
+            application_ranker: Application-specific ranker (optional)
         """
         self.stability_analyzer = stability_analyzer
         self.ml_model = ml_model
         self.config = config or ScreeningConfig()
         self.config.validate()
+        
+        self.application_ranker = application_ranker
+        if self.application_ranker is None and self.config.enable_application_ranking:
+            # Create default application ranker if needed
+            self.application_ranker = ApplicationRanker()
+            logger.info("Created default ApplicationRanker")
         
         self.redis_client = redis_client
         if self.redis_client is None and REDIS_AVAILABLE and self.config.use_cache:
@@ -252,16 +287,22 @@ class ScreeningEngine:
         # Step 3: Calculate ranking scores
         viable_candidates = self._calculate_scores(viable_candidates)
         
-        # Step 4: Rank candidates
+        # Step 4: Application-based ranking (if enabled)
+        application_rankings = None
+        if self.config.enable_application_ranking and self.application_ranker:
+            viable_candidates, application_rankings = self._apply_application_ranking(viable_candidates)
+        
+        # Step 5: Rank candidates
         ranked_candidates = self._rank_candidates(viable_candidates)
         
-        # Step 5: Calculate statistics
+        # Step 6: Calculate statistics
         results = ScreeningResults(
             screening_id=screening_id,
             total_candidates=len(candidates),
             viable_candidates=len(viable_candidates),
             ranked_candidates=ranked_candidates,
-            config=self.config
+            config=self.config,
+            application_rankings=application_rankings
         )
         
         results.avg_stability_score = np.mean([c.stability_score for c in ranked_candidates])
@@ -391,6 +432,68 @@ class ScreeningEngine:
         
         return None
     
+    def _apply_application_ranking(
+        self,
+        candidates: List[MaterialCandidate]
+    ) -> Tuple[List[MaterialCandidate], Dict[str, List[RankedMaterial]]]:
+        """
+        Apply application-specific ranking to candidates.
+        
+        Args:
+            candidates: List of material candidates
+        
+        Returns:
+            Tuple of (candidates with application scores, application rankings dict)
+        """
+        if not self.application_ranker:
+            logger.warning("Application ranker not available")
+            return candidates, {}
+        
+        # Convert candidates to material dictionaries for ranking
+        materials = []
+        for candidate in candidates:
+            material_dict = {
+                'material_id': candidate.material_id,
+                'formula': candidate.formula,
+                'hardness': candidate.predicted_hardness,
+                'thermal_conductivity': None,  # Would need to be added to MaterialCandidate
+                'melting_point': None,
+                'formation_energy': candidate.formation_energy,
+                'bulk_modulus': None,
+                'band_gap': None,
+                'density': None,
+            }
+            materials.append(material_dict)
+        
+        # Determine which applications to rank for
+        applications = self.config.selected_applications
+        if applications is None:
+            applications = self.application_ranker.list_applications()
+        
+        # Rank for each application
+        application_rankings = {}
+        for app in applications:
+            try:
+                ranked = self.application_ranker.rank_materials(materials, app)
+                application_rankings[app] = ranked
+                
+                # Update candidates with application scores
+                for i, candidate in enumerate(candidates):
+                    if candidate.application_scores is None:
+                        candidate.application_scores = {}
+                    
+                    # Find matching ranked material
+                    for ranked_material in ranked:
+                        if ranked_material.material_id == candidate.material_id:
+                            candidate.application_scores[app] = ranked_material.overall_score
+                            break
+                
+                logger.info(f"Ranked {len(ranked)} materials for application: {app}")
+            except Exception as e:
+                logger.error(f"Failed to rank for application {app}: {e}")
+        
+        return candidates, application_rankings
+    
     def _calculate_scores(self, candidates: List[MaterialCandidate]) -> List[MaterialCandidate]:
         """
         Calculate ranking scores for candidates.
@@ -440,11 +543,26 @@ class ScreeningEngine:
         
         # Calculate combined scores
         for candidate in candidates:
-            candidate.combined_score = (
+            base_score = (
                 self.config.stability_weight * candidate.stability_score +
                 self.config.performance_weight * candidate.performance_score +
                 self.config.cost_weight * candidate.cost_efficiency_score
             )
+            
+            # Add application ranking component if enabled
+            if self.config.enable_application_ranking and candidate.application_scores:
+                # Use average of application scores
+                app_scores = list(candidate.application_scores.values())
+                if app_scores:
+                    avg_app_score = np.mean(app_scores)
+                    candidate.combined_score = (
+                        base_score * (1.0 - self.config.application_ranking_weight) +
+                        avg_app_score * self.config.application_ranking_weight
+                    )
+                else:
+                    candidate.combined_score = base_score
+            else:
+                candidate.combined_score = base_score
         
         return candidates
     
@@ -634,6 +752,7 @@ class ScreeningEngine:
                 'performance_score': candidate1.performance_score,
                 'cost_score': candidate1.cost_efficiency_score,
                 'combined_score': candidate1.combined_score,
+                'application_scores': candidate1.application_scores,
             },
             'candidate2': {
                 'formula': candidate2.formula,
@@ -641,6 +760,162 @@ class ScreeningEngine:
                 'performance_score': candidate2.performance_score,
                 'cost_score': candidate2.cost_efficiency_score,
                 'combined_score': candidate2.combined_score,
+                'application_scores': candidate2.application_scores,
             },
             'winner': candidate1.formula if candidate1.combined_score > candidate2.combined_score else candidate2.formula,
         }
+    
+    def filter_by_application(
+        self,
+        results: ScreeningResults,
+        application: str,
+        min_score: float = 0.5
+    ) -> List[MaterialCandidate]:
+        """
+        Filter candidates by application score threshold.
+        
+        Args:
+            results: Screening results
+            application: Application name
+            min_score: Minimum application score threshold
+        
+        Returns:
+            List of candidates meeting the threshold
+        """
+        if not results.application_rankings or application not in results.application_rankings:
+            logger.warning(f"No rankings available for application: {application}")
+            return []
+        
+        filtered = []
+        for candidate in results.ranked_candidates:
+            if candidate.application_scores and application in candidate.application_scores:
+                if candidate.application_scores[application] >= min_score:
+                    filtered.append(candidate)
+        
+        logger.info(
+            f"Filtered {len(filtered)} candidates for {application} "
+            f"with score >= {min_score}"
+        )
+        
+        return filtered
+    
+    def rank_by_multiple_objectives(
+        self,
+        candidates: List[MaterialCandidate],
+        objectives: Dict[str, float]
+    ) -> List[MaterialCandidate]:
+        """
+        Rank candidates using multiple objectives with custom weights.
+        
+        Args:
+            candidates: List of material candidates
+            objectives: Dictionary of objective names to weights
+                       Supported: 'stability', 'performance', 'cost', 'application:<app_name>'
+        
+        Returns:
+            Ranked list of candidates
+        """
+        # Validate weights sum to 1.0
+        total_weight = sum(objectives.values())
+        if not np.isclose(total_weight, 1.0):
+            raise ValueError(f"Objective weights must sum to 1.0, got {total_weight}")
+        
+        # Calculate multi-objective scores
+        for candidate in candidates:
+            score = 0.0
+            
+            for objective, weight in objectives.items():
+                if objective == 'stability':
+                    score += weight * candidate.stability_score
+                elif objective == 'performance':
+                    score += weight * candidate.performance_score
+                elif objective == 'cost':
+                    score += weight * candidate.cost_efficiency_score
+                elif objective.startswith('application:'):
+                    app_name = objective.split(':', 1)[1]
+                    if candidate.application_scores and app_name in candidate.application_scores:
+                        score += weight * candidate.application_scores[app_name]
+                    else:
+                        logger.warning(
+                            f"Application score for {app_name} not available for {candidate.formula}"
+                        )
+                else:
+                    logger.warning(f"Unknown objective: {objective}")
+            
+            # Store in combined_score for ranking
+            candidate.combined_score = score
+        
+        # Sort by combined score
+        ranked = sorted(candidates, key=lambda c: c.combined_score, reverse=True)
+        
+        logger.info(
+            f"Ranked {len(ranked)} candidates using multi-objective optimization. "
+            f"Top candidate: {ranked[0].formula} (score: {ranked[0].combined_score:.3f})"
+        )
+        
+        return ranked
+    
+    def get_pareto_front(
+        self,
+        candidates: List[MaterialCandidate],
+        objectives: List[str]
+    ) -> List[MaterialCandidate]:
+        """
+        Get Pareto-optimal candidates for multiple objectives.
+        
+        Args:
+            candidates: List of material candidates
+            objectives: List of objective names to optimize
+                       Supported: 'stability', 'performance', 'cost', 'application:<app_name>'
+        
+        Returns:
+            List of Pareto-optimal candidates
+        """
+        if not candidates:
+            return []
+        
+        # Extract objective values for each candidate
+        objective_values = []
+        for candidate in candidates:
+            values = []
+            for objective in objectives:
+                if objective == 'stability':
+                    values.append(candidate.stability_score)
+                elif objective == 'performance':
+                    values.append(candidate.performance_score)
+                elif objective == 'cost':
+                    values.append(candidate.cost_efficiency_score)
+                elif objective.startswith('application:'):
+                    app_name = objective.split(':', 1)[1]
+                    if candidate.application_scores and app_name in candidate.application_scores:
+                        values.append(candidate.application_scores[app_name])
+                    else:
+                        values.append(0.0)
+                else:
+                    values.append(0.0)
+            objective_values.append(values)
+        
+        objective_values = np.array(objective_values)
+        
+        # Find Pareto front (maximize all objectives)
+        pareto_front = []
+        for i, candidate in enumerate(candidates):
+            is_dominated = False
+            for j in range(len(candidates)):
+                if i == j:
+                    continue
+                # Check if j dominates i (all objectives >= and at least one >)
+                if np.all(objective_values[j] >= objective_values[i]) and \
+                   np.any(objective_values[j] > objective_values[i]):
+                    is_dominated = True
+                    break
+            
+            if not is_dominated:
+                pareto_front.append(candidate)
+        
+        logger.info(
+            f"Found {len(pareto_front)} Pareto-optimal candidates "
+            f"from {len(candidates)} total candidates"
+        )
+        
+        return pareto_front

@@ -15,6 +15,8 @@ from ceramic_discovery.screening import (
     MaterialCandidate,
     ScreeningConfig,
     RankingCriterion,
+    ApplicationRanker,
+    ApplicationSpec,
 )
 from ceramic_discovery.dft.stability_analyzer import StabilityAnalyzer
 
@@ -435,6 +437,352 @@ class TestRetryConfig:
         # Should cap at max_delay
         delay_large = config.get_delay(10)
         assert delay_large == 10.0
+
+
+class TestEnhancedScreeningWithApplicationRanking:
+    """Integration tests for enhanced screening engine with application ranking."""
+    
+    @pytest.fixture
+    def stability_analyzer(self):
+        """Create stability analyzer."""
+        return StabilityAnalyzer(metastable_threshold=0.1)
+    
+    @pytest.fixture
+    def application_ranker(self):
+        """Create application ranker with default applications."""
+        return ApplicationRanker()
+    
+    @pytest.fixture
+    def screening_config_with_apps(self):
+        """Create screening configuration with application ranking enabled."""
+        return ScreeningConfig(
+            stability_threshold=0.1,
+            require_viable=True,
+            stability_weight=0.3,
+            performance_weight=0.3,
+            cost_weight=0.2,
+            enable_application_ranking=True,
+            application_ranking_weight=0.2,
+            selected_applications=['aerospace_hypersonic', 'cutting_tools'],
+        )
+    
+    @pytest.fixture
+    def sample_candidates_with_properties(self):
+        """Create sample material candidates with properties for application ranking."""
+        return [
+            MaterialCandidate(
+                material_id="mat1",
+                formula="SiC",
+                base_ceramic="SiC",
+                energy_above_hull=0.05,
+                formation_energy=-2.5,
+                predicted_hardness=32.0,  # Good for cutting tools
+                predicted_fracture_toughness=4.5,
+            ),
+            MaterialCandidate(
+                material_id="mat2",
+                formula="TiC",
+                base_ceramic="TiC",
+                energy_above_hull=0.08,
+                formation_energy=-3.0,
+                predicted_hardness=35.0,  # Excellent for cutting tools
+                predicted_fracture_toughness=5.0,
+            ),
+            MaterialCandidate(
+                material_id="mat3",
+                formula="B4C",
+                base_ceramic="B4C",
+                energy_above_hull=0.03,
+                formation_energy=-1.8,
+                predicted_hardness=28.0,  # Good for aerospace
+                predicted_fracture_toughness=3.5,
+            ),
+        ]
+    
+    def test_screening_with_application_ranking(
+        self,
+        stability_analyzer,
+        application_ranker,
+        screening_config_with_apps,
+        sample_candidates_with_properties
+    ):
+        """Test screening with application ranking enabled."""
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=screening_config_with_apps,
+            application_ranker=application_ranker
+        )
+        
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_app_ranking"
+        )
+        
+        # All candidates should pass stability filtering
+        assert results.viable_candidates == 3
+        
+        # Application rankings should be present
+        assert results.application_rankings is not None
+        assert 'aerospace_hypersonic' in results.application_rankings
+        assert 'cutting_tools' in results.application_rankings
+        
+        # Candidates should have application scores
+        for candidate in results.ranked_candidates:
+            assert candidate.application_scores is not None
+            assert 'aerospace_hypersonic' in candidate.application_scores
+            assert 'cutting_tools' in candidate.application_scores
+            
+            # Scores should be in [0, 1] range
+            for app, score in candidate.application_scores.items():
+                assert 0.0 <= score <= 1.0
+    
+    def test_multi_objective_optimization(
+        self,
+        stability_analyzer,
+        application_ranker,
+        sample_candidates_with_properties
+    ):
+        """Test multi-objective optimization with custom weights."""
+        config = ScreeningConfig(
+            stability_threshold=0.1,
+            require_viable=True,
+            enable_application_ranking=True,
+        )
+        
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=config,
+            application_ranker=application_ranker
+        )
+        
+        # Screen candidates
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_multi_obj"
+        )
+        
+        # Define custom objectives
+        objectives = {
+            'stability': 0.3,
+            'performance': 0.3,
+            'application:cutting_tools': 0.4,
+        }
+        
+        # Rank by multiple objectives
+        ranked = engine.rank_by_multiple_objectives(
+            results.ranked_candidates,
+            objectives
+        )
+        
+        # Should return all candidates
+        assert len(ranked) == 3
+        
+        # Scores should be in descending order
+        scores = [c.combined_score for c in ranked]
+        assert scores == sorted(scores, reverse=True)
+        
+        # TiC should rank high for cutting tools (hardness 35.0)
+        top_candidate = ranked[0]
+        assert top_candidate.formula in ['TiC', 'SiC']
+    
+    def test_filter_by_application(
+        self,
+        stability_analyzer,
+        application_ranker,
+        screening_config_with_apps,
+        sample_candidates_with_properties
+    ):
+        """Test filtering candidates by application score threshold."""
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=screening_config_with_apps,
+            application_ranker=application_ranker
+        )
+        
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_filter"
+        )
+        
+        # Filter by aerospace application with threshold
+        filtered = engine.filter_by_application(
+            results,
+            'aerospace_hypersonic',
+            min_score=0.3
+        )
+        
+        # Should return some candidates
+        assert len(filtered) >= 0
+        
+        # All filtered candidates should meet threshold
+        for candidate in filtered:
+            assert candidate.application_scores['aerospace_hypersonic'] >= 0.3
+    
+    def test_pareto_front_calculation(
+        self,
+        stability_analyzer,
+        application_ranker,
+        screening_config_with_apps,
+        sample_candidates_with_properties
+    ):
+        """Test Pareto front calculation for multi-objective optimization."""
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=screening_config_with_apps,
+            application_ranker=application_ranker
+        )
+        
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_pareto"
+        )
+        
+        # Get Pareto front
+        objectives = ['stability', 'performance', 'application:cutting_tools']
+        pareto_front = engine.get_pareto_front(
+            results.ranked_candidates,
+            objectives
+        )
+        
+        # Should have at least one Pareto-optimal candidate
+        assert len(pareto_front) >= 1
+        assert len(pareto_front) <= len(results.ranked_candidates)
+        
+        # All candidates in Pareto front should be non-dominated
+        for candidate in pareto_front:
+            assert candidate in results.ranked_candidates
+    
+    def test_backward_compatibility(
+        self,
+        stability_analyzer,
+        sample_candidates_with_properties
+    ):
+        """Test backward compatibility - screening without application ranking."""
+        # Create config without application ranking
+        config = ScreeningConfig(
+            stability_threshold=0.1,
+            require_viable=True,
+            stability_weight=0.4,
+            performance_weight=0.4,
+            cost_weight=0.2,
+            enable_application_ranking=False,
+        )
+        
+        # Create engine without application ranker
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=config
+        )
+        
+        # Should work without application ranking
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_backward_compat"
+        )
+        
+        # Should complete successfully
+        assert results.viable_candidates == 3
+        assert results.application_rankings is None
+        
+        # Candidates should not have application scores
+        for candidate in results.ranked_candidates:
+            assert candidate.application_scores is None or len(candidate.application_scores) == 0
+    
+    def test_application_ranking_with_missing_properties(
+        self,
+        stability_analyzer,
+        application_ranker,
+        screening_config_with_apps
+    ):
+        """Test application ranking handles missing properties gracefully."""
+        # Create candidates with some missing properties
+        candidates = [
+            MaterialCandidate(
+                material_id="mat1",
+                formula="SiC",
+                base_ceramic="SiC",
+                energy_above_hull=0.05,
+                formation_energy=-2.5,
+                predicted_hardness=32.0,
+                # Missing fracture_toughness
+            ),
+            MaterialCandidate(
+                material_id="mat2",
+                formula="TiC",
+                base_ceramic="TiC",
+                energy_above_hull=0.08,
+                formation_energy=-3.0,
+                # Missing both hardness and fracture_toughness
+            ),
+        ]
+        
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=screening_config_with_apps,
+            application_ranker=application_ranker
+        )
+        
+        # Should handle missing properties without crashing
+        results = engine.screen_candidates(candidates, "test_missing_props")
+        
+        assert results.viable_candidates == 2
+        
+        # Should still have application scores (partial scoring)
+        for candidate in results.ranked_candidates:
+            if candidate.application_scores:
+                for score in candidate.application_scores.values():
+                    assert 0.0 <= score <= 1.0
+    
+    def test_custom_application_specification(
+        self,
+        stability_analyzer,
+        sample_candidates_with_properties
+    ):
+        """Test screening with custom application specification."""
+        # Create custom application
+        custom_app = ApplicationSpec(
+            name='custom_armor',
+            description='Custom armor application',
+            target_hardness=(30.0, 40.0),
+            target_formation_energy=(-4.0, -2.0),
+            weight_hardness=0.6,
+            weight_formation_energy=0.4,
+        )
+        
+        # Create ranker with custom application
+        ranker = ApplicationRanker(applications={'custom_armor': custom_app})
+        
+        # Create config for custom application
+        config = ScreeningConfig(
+            stability_threshold=0.1,
+            require_viable=True,
+            stability_weight=0.5,
+            performance_weight=0.3,
+            cost_weight=0.0,
+            enable_application_ranking=True,
+            application_ranking_weight=0.2,
+            selected_applications=['custom_armor'],
+        )
+        
+        engine = ScreeningEngine(
+            stability_analyzer=stability_analyzer,
+            config=config,
+            application_ranker=ranker
+        )
+        
+        results = engine.screen_candidates(
+            sample_candidates_with_properties,
+            "test_custom_app"
+        )
+        
+        # Should have rankings for custom application
+        assert results.application_rankings is not None
+        assert 'custom_armor' in results.application_rankings
+        
+        # Candidates should have custom application scores
+        for candidate in results.ranked_candidates:
+            if candidate.application_scores:
+                assert 'custom_armor' in candidate.application_scores
 
 
 if __name__ == "__main__":

@@ -18,9 +18,13 @@ The Ceramic Armor Discovery Framework enables researchers to:
 
 ### Key Capabilities
 
+✅ **Multi-Source Data Integration** - Load from Materials Project, JARVIS-DFT, NIST-JANAF, and literature databases  
 ✅ **DFT Data Collection** - Automated extraction from Materials Project API  
 ✅ **Stability Analysis** - Thermodynamic viability screening (ΔE_hull ≤ 0.1 eV/atom)  
+✅ **Advanced Feature Engineering** - Composition and structure-based descriptors for ML  
 ✅ **Machine Learning** - Property-to-performance predictions with uncertainty quantification  
+✅ **Application-Specific Ranking** - Rank materials for aerospace, cutting tools, thermal barriers, and more  
+✅ **Experimental Planning** - Automated synthesis and characterization protocol generation  
 ✅ **High-Throughput Screening** - Parallel processing for large material sets  
 ✅ **Reproducibility** - Complete provenance tracking and environment management  
 ✅ **Production Ready** - Docker deployment, Kubernetes support, CI/CD pipeline
@@ -77,6 +81,8 @@ ceramic-discovery health
 - **[Installation](INSTALLATION.md)** - Detailed installation instructions for all platforms
 - **[User Guide](docs/USER_GUIDE.md)** - Comprehensive workflows and examples
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[JARVIS Integration](docs/JARVIS_INTEGRATION.md)** - Guide to using JARVIS-DFT data
+- **[Application Ranking](docs/APPLICATION_RANKING.md)** - Application-specific material ranking
 - **[Methodology](docs/METHODOLOGY.md)** - Scientific methodology and assumptions
 - **[Contributing](CONTRIBUTING.md)** - Guidelines for contributors
 
@@ -90,7 +96,81 @@ ceramic-discovery health
 
 ## 💡 Usage Examples
 
-### Example 1: Predict Ballistic Performance
+### Example 1: Load Multi-Source Data
+
+```python
+from ceramic_discovery.dft import JarvisClient, DataCombiner, MaterialsProjectClient
+
+# Load JARVIS-DFT carbides
+jarvis_client = JarvisClient("./data/jdft_3d-7-7-2018.json")
+carbides = jarvis_client.load_carbides(metal_elements={"Si", "Ti", "Zr", "Hf"})
+
+# Load Materials Project data
+mp_client = MaterialsProjectClient(api_key="your_api_key")
+mp_data = mp_client.search_materials("SiC")
+
+# Combine sources
+combiner = DataCombiner()
+combined = combiner.combine_sources(
+    mp_data=mp_data,
+    jarvis_data=carbides,
+    nist_data={},
+    literature_data={}
+)
+
+print(f"Combined {len(combined)} unique materials from multiple sources")
+```
+
+### Example 2: Application-Specific Ranking
+
+```python
+from ceramic_discovery.screening import ApplicationRanker
+
+# Initialize ranker
+ranker = ApplicationRanker()
+
+# Rank materials for aerospace application
+aerospace_ranking = ranker.rank_materials(
+    materials=materials,
+    application="aerospace_hypersonic"
+)
+
+# Display top candidates
+for i, ranked in enumerate(aerospace_ranking[:5], 1):
+    print(f"{i}. {ranked.formula}: Score {ranked.overall_score:.3f}")
+```
+
+### Example 3: Experimental Planning
+
+```python
+from ceramic_discovery.validation import ExperimentalPlanner
+
+# Initialize planner
+planner = ExperimentalPlanner()
+
+# Design synthesis protocol
+methods = planner.design_synthesis_protocol(
+    formula="HfC",
+    properties={"melting_point": 3900, "hardness": 28.0}
+)
+
+# Design characterization plan
+techniques = planner.design_characterization_plan(
+    formula="HfC",
+    target_properties=["hardness", "thermal_conductivity"]
+)
+
+# Estimate resources
+estimate = planner.estimate_resources(
+    synthesis_methods=methods,
+    characterization_plan=techniques
+)
+
+print(f"Timeline: {estimate.timeline_months:.1f} months")
+print(f"Cost: ${estimate.estimated_cost_k_dollars:.1f}K")
+```
+
+### Example 4: Predict Ballistic Performance
 
 ```python
 from ceramic_discovery.ceramics import CeramicSystemFactory
@@ -108,47 +188,6 @@ prediction = predictor.predict_v50(sic.to_dict())
 print(f"Predicted V₅₀: {prediction['v50']:.0f} m/s")
 print(f"95% CI: [{prediction['confidence_interval'][0]:.0f}, "
       f"{prediction['confidence_interval'][1]:.0f}] m/s")
-```
-
-### Example 2: Screen Dopant Candidates
-
-```python
-from ceramic_discovery.screening import ScreeningEngine
-from ceramic_discovery.dft import StabilityAnalyzer
-
-# Initialize screening engine
-analyzer = StabilityAnalyzer()
-engine = ScreeningEngine(stability_analyzer=analyzer)
-
-# Screen materials
-results = engine.screen_materials(
-    materials=candidate_materials,
-    stability_threshold=0.1,
-    min_hardness=25.0,
-    min_fracture_toughness=4.0
-)
-
-# Display top candidates
-for i, material in enumerate(results[:5], 1):
-    print(f"{i}. {material['formula']}: "
-          f"V₅₀ = {material['predicted_v50']:.0f} m/s")
-```
-
-### Example 3: Analyze Mechanisms
-
-```python
-from ceramic_discovery.ballistics import MechanismAnalyzer
-
-analyzer = MechanismAnalyzer()
-
-# Analyze thermal conductivity impact
-analysis = analyzer.analyze_thermal_conductivity_impact(
-    materials=materials,
-    v50_values=v50_predictions
-)
-
-print(f"Thermal conductivity correlation: {analysis['correlation']:.3f}")
-print(f"Impact: {analysis['impact_magnitude']:.1f} m/s per W/(m·K)")
 ```
 
 ## 🔬 Research Workflows
@@ -177,6 +216,26 @@ Investigate physical mechanisms underlying property-performance relationships.
 
 **See:** [User Guide - Workflow 4](docs/USER_GUIDE.md#workflow-4-mechanism-investigation)  
 **Example:** [validation_example.py](examples/validation_example.py)
+
+### 5. Multi-Source Data Integration
+Load and combine data from JARVIS-DFT, NIST-JANAF, Materials Project, and literature.
+
+**See:** [User Guide - Workflow 5](docs/USER_GUIDE.md#workflow-5-multi-source-data-integration)  
+**Guide:** [JARVIS Integration](docs/JARVIS_INTEGRATION.md)  
+**Example:** [jarvis_data_loading_example.py](examples/jarvis_data_loading_example.py)
+
+### 6. Application-Specific Ranking
+Rank materials for specific applications (aerospace, cutting tools, thermal barriers).
+
+**See:** [User Guide - Workflow 6](docs/USER_GUIDE.md#workflow-6-application-specific-material-ranking)  
+**Guide:** [Application Ranking](docs/APPLICATION_RANKING.md)  
+**Example:** [application_ranking_example.py](examples/application_ranking_example.py)
+
+### 7. Experimental Planning
+Generate synthesis and characterization protocols for top candidates.
+
+**See:** [User Guide - Workflow 7](docs/USER_GUIDE.md#workflow-7-experimental-planning)  
+**Example:** [experimental_planning_example.py](examples/experimental_planning_example.py)
 
 ## 🐳 Docker Deployment
 

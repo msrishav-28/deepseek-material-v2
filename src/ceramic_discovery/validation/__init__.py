@@ -17,6 +17,14 @@ from .reproducibility import (
     ReproducibilityFramework,
     SoftwareVersion,
 )
+from .experimental_planner import (
+    CharacterizationTechnique,
+    DifficultyLevel,
+    ExperimentalPlanner,
+    ResourceEstimate,
+    SynthesisMethod,
+    SynthesisMethodType,
+)
 
 __all__ = [
     # Physical validation
@@ -34,4 +42,11 @@ __all__ = [
     "RandomSeedManager",
     "ReproducibilityFramework",
     "SoftwareVersion",
+    # Experimental planning
+    "CharacterizationTechnique",
+    "DifficultyLevel",
+    "ExperimentalPlanner",
+    "ResourceEstimate",
+    "SynthesisMethod",
+    "SynthesisMethodType",
 ]

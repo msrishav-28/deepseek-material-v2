@@ -9,7 +9,7 @@ from ceramic_discovery.validation import (
     RandomSeedManager,
     ReproducibilityFramework,
 )
-from ceramic_discovery.ml import ModelTrainer, FeatureEngineer
+from ceramic_discovery.ml import ModelTrainer, FeatureEngineeringPipeline
 from ceramic_discovery.dft import StabilityAnalyzer
 from ceramic_discovery.screening import ScreeningEngine
 
@@ -79,7 +79,7 @@ class TestDeterministicBehavior:
     @pytest.mark.reproducibility
     def test_feature_engineering_reproducibility(self):
         """Test that feature engineering is reproducible."""
-        engineer = FeatureEngineer()
+        engineer = FeatureEngineeringPipeline()
 
         material = {
             "hardness": 28.0,

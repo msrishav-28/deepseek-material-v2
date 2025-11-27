@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
+from .composition_descriptors import CompositionDescriptorCalculator
+from .structure_descriptors import StructureDescriptorCalculator
+
 
 @dataclass
 class FeatureMetadata:
@@ -180,7 +183,9 @@ class FeatureEngineeringPipeline:
         self,
         scaling_method: str = 'standard',
         handle_missing: str = 'drop',
-        min_feature_variance: float = 1e-6
+        min_feature_variance: float = 1e-6,
+        include_composition_descriptors: bool = False,
+        include_structure_descriptors: bool = False
     ):
         """
         Initialize feature engineering pipeline.
@@ -189,10 +194,14 @@ class FeatureEngineeringPipeline:
             scaling_method: 'standard' (z-score) or 'minmax' (0-1 range)
             handle_missing: 'drop' (remove samples) or 'median' (impute with median)
             min_feature_variance: Minimum variance threshold for feature selection
+            include_composition_descriptors: Whether to calculate composition-based descriptors
+            include_structure_descriptors: Whether to calculate structure-derived descriptors
         """
         self.scaling_method = scaling_method
         self.handle_missing = handle_missing
         self.min_feature_variance = min_feature_variance
+        self.include_composition_descriptors = include_composition_descriptors
+        self.include_structure_descriptors = include_structure_descriptors
         
         self.validator = FeatureValidator()
         self.scaler: Optional[StandardScaler] = None
@@ -200,12 +209,21 @@ class FeatureEngineeringPipeline:
         self.selected_features: List[str] = []
         self.feature_means: Dict[str, float] = {}
         self.feature_stds: Dict[str, float] = {}
+        
+        # Initialize descriptor calculators if needed
+        self.composition_calculator = None
+        self.structure_calculator = None
+        if self.include_composition_descriptors:
+            self.composition_calculator = CompositionDescriptorCalculator()
+        if self.include_structure_descriptors:
+            self.structure_calculator = StructureDescriptorCalculator()
     
     def fit(
         self,
         X: pd.DataFrame,
         y: Optional[pd.Series] = None,
-        target_name: Optional[str] = None
+        target_name: Optional[str] = None,
+        formulas: Optional[pd.Series] = None
     ) -> 'FeatureEngineeringPipeline':
         """
         Fit the feature engineering pipeline.
@@ -214,10 +232,25 @@ class FeatureEngineeringPipeline:
             X: Feature dataframe
             y: Optional target variable
             target_name: Optional name of target variable for validation
+            formulas: Optional series of chemical formulas for composition descriptors
         
         Returns:
             Self for method chaining
         """
+        # Add composition descriptors if requested
+        if self.include_composition_descriptors:
+            if formulas is None:
+                warnings.warn(
+                    "Composition descriptors requested but no formulas provided. "
+                    "Skipping composition descriptor calculation."
+                )
+            else:
+                X = self._add_composition_descriptors(X, formulas)
+        
+        # Add structure descriptors if requested
+        if self.include_structure_descriptors:
+            X = self._add_structure_descriptors(X)
+        
         # Validate feature set
         is_valid, violations = self.validator.validate_feature_set(X.columns.tolist())
         if not is_valid:
@@ -239,10 +272,18 @@ class FeatureEngineeringPipeline:
         self.feature_metadata = {}
         for col in X.columns:
             tier = self.validator.get_feature_tier(col)
+            
+            # Determine category for new descriptors
+            category = 'unknown'
+            if col.startswith(('num_', 'composition_', 'mean_', 'std_', 'delta_', 'weighted_')):
+                category = 'composition'
+            elif col in ['pugh_ratio', 'is_ductile', 'youngs_modulus', 'poisson_ratio', 'energy_density']:
+                category = 'structure'
+            
             self.feature_metadata[col] = FeatureMetadata(
                 name=col,
                 tier=tier,
-                category='unknown',  # Would be populated from property definitions
+                category=category,
                 unit='unknown',
                 is_fundamental=(tier in [1, 2])
             )
@@ -269,18 +310,33 @@ class FeatureEngineeringPipeline:
         
         return self
     
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, X: pd.DataFrame, formulas: Optional[pd.Series] = None) -> pd.DataFrame:
         """
         Transform features using fitted pipeline.
         
         Args:
             X: Feature dataframe
+            formulas: Optional series of chemical formulas for composition descriptors
         
         Returns:
             Transformed feature dataframe
         """
         if self.scaler is None:
             raise ValueError("Pipeline must be fitted before transform")
+        
+        # Add composition descriptors if requested
+        if self.include_composition_descriptors:
+            if formulas is None:
+                warnings.warn(
+                    "Composition descriptors requested but no formulas provided. "
+                    "Skipping composition descriptor calculation."
+                )
+            else:
+                X = self._add_composition_descriptors(X, formulas)
+        
+        # Add structure descriptors if requested
+        if self.include_structure_descriptors:
+            X = self._add_structure_descriptors(X)
         
         # Handle missing values
         X_processed = self._handle_missing_values(X)
@@ -301,10 +357,11 @@ class FeatureEngineeringPipeline:
         self,
         X: pd.DataFrame,
         y: Optional[pd.Series] = None,
-        target_name: Optional[str] = None
+        target_name: Optional[str] = None,
+        formulas: Optional[pd.Series] = None
     ) -> pd.DataFrame:
         """Fit and transform in one step."""
-        return self.fit(X, y, target_name).transform(X)
+        return self.fit(X, y, target_name, formulas).transform(X, formulas)
     
     def _handle_missing_values(self, X: pd.DataFrame) -> pd.DataFrame:
         """Handle missing values according to strategy."""
@@ -441,3 +498,91 @@ class FeatureEngineeringPipeline:
         })
         
         return stats_df
+    
+    def _add_composition_descriptors(self, X: pd.DataFrame, formulas: pd.Series) -> pd.DataFrame:
+        """
+        Add composition-based descriptors to feature dataframe.
+        
+        Args:
+            X: Feature dataframe
+            formulas: Series of chemical formulas
+            
+        Returns:
+            Feature dataframe with composition descriptors added
+        """
+        if self.composition_calculator is None:
+            return X
+        
+        # Make a copy to avoid modifying original
+        X_enhanced = X.copy()
+        
+        # Calculate composition descriptors for each formula
+        composition_features = []
+        for idx, formula in formulas.items():
+            if pd.isna(formula):
+                # Add empty dict for missing formulas
+                composition_features.append({})
+            else:
+                descriptors = self.composition_calculator.calculate_descriptors(str(formula))
+                composition_features.append(descriptors)
+        
+        # Convert to dataframe
+        comp_df = pd.DataFrame(composition_features, index=formulas.index)
+        
+        # Merge with existing features
+        # Only add columns that don't already exist
+        new_columns = [col for col in comp_df.columns if col not in X_enhanced.columns]
+        if new_columns:
+            X_enhanced = pd.concat([X_enhanced, comp_df[new_columns]], axis=1)
+        
+        return X_enhanced
+    
+    def _add_structure_descriptors(self, X: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add structure-derived descriptors to feature dataframe.
+        
+        Args:
+            X: Feature dataframe with material properties
+            
+        Returns:
+            Feature dataframe with structure descriptors added
+        """
+        if self.structure_calculator is None:
+            return X
+        
+        # Make a copy to avoid modifying original
+        X_enhanced = X.copy()
+        
+        # Calculate structure descriptors for each material
+        structure_features = []
+        for idx, row in X.iterrows():
+            # Convert row to dictionary of properties
+            properties = row.to_dict()
+            
+            # Map common column names to expected property names
+            property_mapping = {
+                'bulk_modulus_vrh': 'bulk_modulus',
+                'shear_modulus_vrh': 'shear_modulus',
+                'formation_energy_per_atom': 'formation_energy',
+            }
+            
+            # Create mapped properties dict
+            mapped_properties = {}
+            for col, value in properties.items():
+                # Use mapped name if available, otherwise use original
+                prop_name = property_mapping.get(col, col)
+                mapped_properties[prop_name] = value
+            
+            descriptors = self.structure_calculator.calculate_descriptors(mapped_properties)
+            structure_features.append(descriptors)
+        
+        # Convert to dataframe
+        struct_df = pd.DataFrame(structure_features, index=X.index)
+        
+        # Merge with existing features
+        # Only add columns that don't already exist
+        new_columns = [col for col in struct_df.columns if col not in X_enhanced.columns]
+        if new_columns:
+            X_enhanced = pd.concat([X_enhanced, struct_df[new_columns]], axis=1)
+        
+        return X_enhanced

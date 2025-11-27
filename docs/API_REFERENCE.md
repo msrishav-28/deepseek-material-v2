@@ -17,7 +17,8 @@
 5. [Screening Module](#screening-module)
 6. [Validation Module](#validation-module)
 7. [Analysis Module](#analysis-module)
-8. [Utilities](#utilities)
+8. [Reporting Module](#reporting-module)
+9. [Utilities](#utilities)
 
 ---
 
@@ -154,6 +155,206 @@ Parameters:
 
 Returns:
 - `Dict`: Standardized properties with units
+
+---
+
+### JarvisClient
+
+Client for loading and parsing JARVIS-DFT database files.
+
+```python
+from ceramic_discovery.dft import JarvisClient
+
+client = JarvisClient(jarvis_file_path="./data/jdft_3d-7-7-2018.json")
+```
+
+#### Methods
+
+**`load_carbides(metal_elements=None)`**
+
+Extract carbide materials containing specified metals.
+
+Parameters:
+- `metal_elements` (Set[str], optional): Set of metal element symbols to filter for
+
+Returns:
+- `List[MaterialData]`: List of carbide materials
+
+Example:
+```python
+# Load all carbides
+all_carbides = client.load_carbides()
+
+# Load carbides with specific metals
+sic_tic_carbides = client.load_carbides(metal_elements={"Si", "Ti"})
+print(f"Found {len(sic_tic_carbides)} Si/Ti carbides")
+```
+
+**`parse_formula_from_jid(jid)`**
+
+Parse chemical formula from JARVIS identifier.
+
+Parameters:
+- `jid` (str): JARVIS identifier (e.g., "JVASP-12345")
+
+Returns:
+- `Optional[str]`: Chemical formula or None
+
+---
+
+### NISTClient
+
+Client for loading NIST-JANAF thermochemical data.
+
+```python
+from ceramic_discovery.dft import NISTClient
+
+client = NISTClient()
+```
+
+#### Methods
+
+**`load_thermochemical_data(filepath, material_name)`**
+
+Load temperature-dependent properties from NIST file.
+
+Parameters:
+- `filepath` (str): Path to NIST data file
+- `material_name` (str): Material name for identification
+
+Returns:
+- `pd.DataFrame`: Temperature-dependent properties
+
+Example:
+```python
+sic_data = client.load_thermochemical_data(
+    filepath="./data/nist/SiC.txt",
+    material_name="SiC"
+)
+
+print(sic_data.columns)  # ['Temperature', 'Cp', 'S', 'H-H298', 'DeltaG']
+```
+
+**`interpolate_property(data, temperature, property_name)`**
+
+Interpolate property value at specific temperature.
+
+Parameters:
+- `data` (pd.DataFrame): Thermochemical data
+- `temperature` (float): Temperature in Kelvin
+- `property_name` (str): Property to interpolate
+
+Returns:
+- `float`: Interpolated property value
+
+Example:
+```python
+cp_1000K = client.interpolate_property(
+    data=sic_data,
+    temperature=1000.0,
+    property_name="Cp"
+)
+```
+
+---
+
+### LiteratureDatabase
+
+Manage embedded literature reference data.
+
+```python
+from ceramic_discovery.dft import LiteratureDatabase
+
+lit_db = LiteratureDatabase()
+```
+
+#### Methods
+
+**`get_material_data(formula)`**
+
+Retrieve literature data for material.
+
+Parameters:
+- `formula` (str): Chemical formula
+
+Returns:
+- `Optional[Dict]`: Material data or None
+
+**`get_property_with_uncertainty(formula, property_name)`**
+
+Get property value and uncertainty from literature.
+
+Parameters:
+- `formula` (str): Chemical formula
+- `property_name` (str): Property name
+
+Returns:
+- `Tuple[float, float]`: (value, uncertainty)
+
+Example:
+```python
+hardness, uncertainty = lit_db.get_property_with_uncertainty(
+    formula="SiC",
+    property_name="hardness_vickers"
+)
+print(f"SiC hardness: {hardness:.0f} ± {uncertainty:.0f} HV")
+```
+
+**`list_available_materials()`**
+
+List materials with literature data.
+
+Returns:
+- `List[str]`: List of available material formulas
+
+---
+
+### DataCombiner
+
+Merge data from multiple sources with deduplication.
+
+```python
+from ceramic_discovery.dft import DataCombiner
+
+combiner = DataCombiner()
+```
+
+#### Methods
+
+**`combine_sources(mp_data, jarvis_data, nist_data, literature_data)`**
+
+Combine all data sources into unified dataset.
+
+Parameters:
+- `mp_data` (List[MaterialData]): Materials Project data
+- `jarvis_data` (List[MaterialData]): JARVIS-DFT data
+- `nist_data` (Dict[str, pd.DataFrame]): NIST thermochemical data
+- `literature_data` (Dict[str, Dict]): Literature data
+
+Returns:
+- `pd.DataFrame`: Combined dataset
+
+Example:
+```python
+combined = combiner.combine_sources(
+    mp_data=mp_materials,
+    jarvis_data=jarvis_carbides,
+    nist_data={"SiC": sic_thermo},
+    literature_data=lit_db.get_all_data()
+)
+
+print(f"Combined {len(combined)} unique materials")
+```
+
+**`deduplicate_materials(materials)`**
+
+Remove duplicate materials based on formula.
+
+Parameters:
+- `materials` (List[MaterialData]): Materials to deduplicate
+
+Returns:
+- `List[MaterialData]`: Deduplicated materials
 
 ---
 
@@ -371,6 +572,121 @@ for i, (lower, upper) in enumerate(intervals):
 
 ---
 
+### CompositionDescriptorCalculator
+
+Calculate composition-based material descriptors.
+
+```python
+from ceramic_discovery.ml import CompositionDescriptorCalculator
+
+calc = CompositionDescriptorCalculator()
+```
+
+#### Methods
+
+**`calculate_descriptors(formula)`**
+
+Calculate all composition descriptors for a formula.
+
+Parameters:
+- `formula` (str): Chemical formula
+
+Returns:
+- `Dict[str, float]`: Composition descriptors
+
+Example:
+```python
+descriptors = calc.calculate_descriptors("SiC")
+
+print(f"Number of elements: {descriptors['n_elements']}")
+print(f"Composition entropy: {descriptors['composition_entropy']:.3f}")
+print(f"Mean electronegativity: {descriptors['mean_electronegativity']:.3f}")
+```
+
+**`calculate_composition_entropy(composition)`**
+
+Calculate Shannon entropy of composition.
+
+Parameters:
+- `composition` (Composition): Pymatgen Composition object
+
+Returns:
+- `float`: Composition entropy
+
+**`calculate_electronegativity_features(composition)`**
+
+Calculate electronegativity-based features.
+
+Parameters:
+- `composition` (Composition): Pymatgen Composition object
+
+Returns:
+- `Dict[str, float]`: Electronegativity features (mean, std, delta)
+
+---
+
+### StructureDescriptorCalculator
+
+Calculate structure-derived descriptors.
+
+```python
+from ceramic_discovery.ml import StructureDescriptorCalculator
+
+calc = StructureDescriptorCalculator()
+```
+
+#### Methods
+
+**`calculate_descriptors(properties)`**
+
+Calculate all structure descriptors from properties.
+
+Parameters:
+- `properties` (Dict[str, float]): Material properties
+
+Returns:
+- `Dict[str, float]`: Structure descriptors
+
+Example:
+```python
+properties = {
+    "bulk_modulus": 220.0,
+    "shear_modulus": 190.0,
+    "formation_energy_per_atom": -0.65,
+    "density": 3.21
+}
+
+descriptors = calc.calculate_descriptors(properties)
+
+print(f"Pugh ratio: {descriptors['pugh_ratio']:.3f}")
+print(f"Young's modulus: {descriptors['youngs_modulus']:.1f} GPa")
+print(f"Poisson ratio: {descriptors['poisson_ratio']:.3f}")
+```
+
+**`calculate_pugh_ratio(bulk_modulus, shear_modulus)`**
+
+Calculate Pugh ratio (B/G) for ductility.
+
+Parameters:
+- `bulk_modulus` (float): Bulk modulus in GPa
+- `shear_modulus` (float): Shear modulus in GPa
+
+Returns:
+- `float`: Pugh ratio
+
+**`calculate_elastic_properties(bulk_modulus, shear_modulus)`**
+
+Calculate Young's modulus and Poisson ratio.
+
+Parameters:
+- `bulk_modulus` (float): Bulk modulus in GPa
+- `shear_modulus` (float): Shear modulus in GPa
+
+Returns:
+- `Dict[str, float]`: Elastic properties
+
+---
+
 ## Ballistics Module
 
 ### BallisticPredictor
@@ -534,6 +850,121 @@ Parameters:
 
 Returns:
 - `Dict`: Status information
+
+---
+
+### ApplicationRanker
+
+Rank materials for specific applications.
+
+```python
+from ceramic_discovery.screening import ApplicationRanker
+
+ranker = ApplicationRanker()
+```
+
+#### Methods
+
+**`rank_materials(materials, application)`**
+
+Rank materials for specific application.
+
+Parameters:
+- `materials` (List[Dict]): Materials to rank
+- `application` (str): Application name
+
+Returns:
+- `List[RankedMaterial]`: Ranked materials
+
+Example:
+```python
+aerospace_ranking = ranker.rank_materials(
+    materials=materials,
+    application="aerospace_hypersonic"
+)
+
+for ranked in aerospace_ranking[:5]:
+    print(f"{ranked.formula}: Score {ranked.overall_score:.3f}")
+```
+
+**`rank_for_all_applications(materials)`**
+
+Rank materials for all defined applications.
+
+Parameters:
+- `materials` (List[Dict]): Materials to rank
+
+Returns:
+- `pd.DataFrame`: Rankings for all applications
+
+Example:
+```python
+all_rankings = ranker.rank_for_all_applications(materials)
+
+# Find top material for each application
+top_by_app = all_rankings.loc[all_rankings.groupby('application')['overall_score'].idxmax()]
+print(top_by_app[['application', 'formula', 'overall_score']])
+```
+
+**`list_applications()`**
+
+List available applications.
+
+Returns:
+- `List[str]`: Application names
+
+**`get_application_spec(application)`**
+
+Get specification for an application.
+
+Parameters:
+- `application` (str): Application name
+
+Returns:
+- `ApplicationSpec`: Application specification
+
+---
+
+### SiCAlloyDesignerPipeline
+
+Complete pipeline orchestrating all stages.
+
+```python
+from ceramic_discovery.screening import SiCAlloyDesignerPipeline
+
+pipeline = SiCAlloyDesignerPipeline(
+    jarvis_file="./data/jdft_3d-7-7-2018.json",
+    output_dir="./results/sic_pipeline"
+)
+```
+
+#### Methods
+
+**`run_full_pipeline()`**
+
+Execute complete pipeline from data loading to reporting.
+
+Returns:
+- `Dict`: Pipeline results
+
+Example:
+```python
+results = pipeline.run_full_pipeline()
+
+print(f"Materials loaded: {results['n_materials_loaded']}")
+print(f"Top candidates: {results['n_top_candidates']}")
+print(f"Output directory: {results['output_dir']}")
+```
+
+**`run_stage(stage_name)`**
+
+Execute specific pipeline stage.
+
+Parameters:
+- `stage_name` (str): Stage name ('data_loading', 'feature_engineering', etc.)
+
+Returns:
+- `Dict`: Stage results
 
 ---
 
@@ -720,6 +1151,87 @@ Returns:
 
 ---
 
+### ExperimentalPlanner
+
+Generate experimental design recommendations.
+
+```python
+from ceramic_discovery.validation import ExperimentalPlanner
+
+planner = ExperimentalPlanner()
+```
+
+#### Methods
+
+**`design_synthesis_protocol(formula, properties)`**
+
+Recommend synthesis methods for a material.
+
+Parameters:
+- `formula` (str): Chemical formula
+- `properties` (Dict[str, float]): Material properties
+
+Returns:
+- `List[SynthesisMethod]`: Recommended synthesis methods
+
+Example:
+```python
+methods = planner.design_synthesis_protocol(
+    formula="HfC",
+    properties={"melting_point": 3900, "hardness": 28.0}
+)
+
+for method in methods:
+    print(f"{method.method}: {method.temperature_K}K, {method.pressure_MPa}MPa")
+```
+
+**`design_characterization_plan(formula, target_properties)`**
+
+Recommend characterization techniques.
+
+Parameters:
+- `formula` (str): Chemical formula
+- `target_properties` (List[str]): Properties to characterize
+
+Returns:
+- `List[CharacterizationTechnique]`: Recommended techniques
+
+Example:
+```python
+techniques = planner.design_characterization_plan(
+    formula="HfC",
+    target_properties=["hardness", "thermal_conductivity", "phase_composition"]
+)
+
+for tech in techniques:
+    print(f"{tech.technique}: ${tech.estimated_cost_dollars:.0f}, {tech.estimated_time_hours:.1f}h")
+```
+
+**`estimate_resources(synthesis_methods, characterization_plan)`**
+
+Estimate time and cost for experimental work.
+
+Parameters:
+- `synthesis_methods` (List[SynthesisMethod]): Synthesis methods
+- `characterization_plan` (List[CharacterizationTechnique]): Characterization techniques
+
+Returns:
+- `ResourceEstimate`: Resource estimates
+
+Example:
+```python
+estimate = planner.estimate_resources(
+    synthesis_methods=methods,
+    characterization_plan=techniques
+)
+
+print(f"Timeline: {estimate.timeline_months:.1f} months")
+print(f"Cost: ${estimate.estimated_cost_k_dollars:.1f}K")
+print(f"Confidence: {estimate.confidence_level:.2f}")
+```
+
+---
+
 ## Analysis Module
 
 ### PropertyAnalyzer
@@ -779,6 +1291,76 @@ Create property-performance scatter plot.
 
 ---
 
+## Reporting Module
+
+### ReportGenerator
+
+Generate comprehensive analysis reports.
+
+```python
+from ceramic_discovery.reporting import ReportGenerator
+
+generator = ReportGenerator()
+```
+
+#### Methods
+
+**`generate_summary_report(dataset, ml_results=None, top_candidates=None)`**
+
+Generate summary report with dataset statistics and results.
+
+Parameters:
+- `dataset` (pd.DataFrame): Materials dataset
+- `ml_results` (Dict, optional): ML model results
+- `top_candidates` (List[Dict], optional): Top material candidates
+
+Returns:
+- `str`: Report text
+
+Example:
+```python
+report = generator.generate_summary_report(
+    dataset=combined_data,
+    ml_results={"r2": 0.72, "mae": 45.2, "rmse": 62.1},
+    top_candidates=top_10_materials
+)
+
+print(report)
+
+# Save to file
+with open("./results/summary_report.txt", "w") as f:
+    f.write(report)
+```
+
+**`generate_experimental_protocol_report(candidates, synthesis_plans, characterization_plans, resource_estimates, output_dir)`**
+
+Generate experimental protocol report.
+
+Parameters:
+- `candidates` (List[RankedMaterial]): Material candidates
+- `synthesis_plans` (List[Dict]): Synthesis plans
+- `characterization_plans` (List[Dict]): Characterization plans
+- `resource_estimates` (List[Dict]): Resource estimates
+- `output_dir` (str): Output directory
+
+Returns:
+- `str`: Report file path
+
+Example:
+```python
+report_path = generator.generate_experimental_protocol_report(
+    candidates=top_candidates,
+    synthesis_plans=synthesis_plans,
+    characterization_plans=char_plans,
+    resource_estimates=estimates,
+    output_dir="./results/protocols"
+)
+
+print(f"Protocol report saved to: {report_path}")
+```
+
+---
+
 ## Utilities
 
 ### Configuration
@@ -806,6 +1388,70 @@ logger.info("Starting analysis")
 logger.warning("Unusual value detected")
 logger.error("Processing failed")
 ```
+
+### Data Conversion Utilities
+
+Safe conversion utilities for heterogeneous data formats.
+
+```python
+from ceramic_discovery.utils.data_conversion import (
+    safe_float,
+    safe_int,
+    extract_numeric_from_dict,
+    extract_numeric_from_list
+)
+```
+
+**`safe_float(value)`**
+
+Safely convert any value to float.
+
+Parameters:
+- `value` (Any): Value to convert
+
+Returns:
+- `Optional[float]`: Float value or None
+
+Example:
+```python
+# Handles various types
+safe_float(42)           # 42.0
+safe_float("3.14")       # 3.14
+safe_float(None)         # None
+safe_float({"value": 5}) # 5.0
+safe_float([1, 2, 3])    # 2.0 (mean)
+```
+
+**`safe_int(value)`**
+
+Safely convert any value to int.
+
+Parameters:
+- `value` (Any): Value to convert
+
+Returns:
+- `Optional[int]`: Integer value or None
+
+**`extract_numeric_from_dict(data, keys=None)`**
+
+Extract numeric value from dictionary.
+
+Parameters:
+- `data` (Dict): Dictionary to extract from
+- `keys` (List[str], optional): Keys to try (default: ["value", "magnitude", "mean"])
+
+Returns:
+- `Optional[float]`: Extracted value or None
+
+**`extract_numeric_from_list(data)`**
+
+Extract numeric value from list (computes mean).
+
+Parameters:
+- `data` (List): List to extract from
+
+Returns:
+- `Optional[float]`: Mean of numeric elements or None
 
 ---
 

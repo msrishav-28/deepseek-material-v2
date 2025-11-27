@@ -11,7 +11,7 @@ from ceramic_discovery.performance import (
     MemoryManager,
     IncrementalLearner,
 )
-from ceramic_discovery.ml import ModelTrainer, FeatureEngineer
+from ceramic_discovery.ml import ModelTrainer, FeatureEngineeringPipeline
 from ceramic_discovery.dft import StabilityAnalyzer
 
 
@@ -47,7 +47,7 @@ class TestPerformanceScalability:
     @pytest.mark.performance
     def test_feature_engineering_performance(self):
         """Test feature engineering performance."""
-        engineer = FeatureEngineer()
+        engineer = FeatureEngineeringPipeline()
 
         # Create test data
         n_samples = 500

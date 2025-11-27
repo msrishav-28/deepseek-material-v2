@@ -553,6 +553,177 @@ class ReportGenerator:
         
         return section
     
+    def generate_summary_report(
+        self,
+        data: Optional[pd.DataFrame] = None,
+        ml_results: Optional[Dict[str, Any]] = None,
+        application_rankings: Optional[pd.DataFrame] = None,
+        top_n: int = 10,
+        title: str = "Analysis Summary Report"
+    ) -> str:
+        """
+        Generate comprehensive summary report with dataset statistics, ML performance,
+        and top candidate recommendations.
+        
+        Args:
+            data: DataFrame with material data (optional)
+            ml_results: Dictionary with ML model results (optional)
+            application_rankings: DataFrame with application-specific rankings (optional)
+            top_n: Number of top candidates to include
+            title: Report title
+        
+        Returns:
+            String containing formatted summary report
+        """
+        report_lines = []
+        report_lines.append("=" * 80)
+        report_lines.append(f"{title:^80}")
+        report_lines.append("=" * 80)
+        report_lines.append(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        report_lines.append("")
+        
+        # Dataset Statistics Section
+        if data is not None and len(data) > 0:
+            report_lines.append("-" * 80)
+            report_lines.append("DATASET STATISTICS")
+            report_lines.append("-" * 80)
+            report_lines.append(f"Total materials: {len(data)}")
+            
+            # Count numeric columns
+            numeric_cols = data.select_dtypes(include=[np.number]).columns
+            report_lines.append(f"Properties tracked: {len(numeric_cols)}")
+            
+            # Data completeness
+            if len(numeric_cols) > 0:
+                completeness = (data[numeric_cols].notna().sum().sum() / 
+                              (len(data) * len(numeric_cols)) * 100)
+                report_lines.append(f"Data completeness: {completeness:.1f}%")
+            
+            report_lines.append("")
+            
+            # Property Statistics
+            if len(numeric_cols) > 0:
+                report_lines.append("Property Statistics:")
+                report_lines.append(f"{'Property':<30} {'Mean':>12} {'Std':>12} {'Min':>12} {'Max':>12} {'N':>8}")
+                report_lines.append("-" * 80)
+                
+                for col in numeric_cols[:15]:  # Limit to 15 properties
+                    col_data = data[col].dropna()
+                    if len(col_data) > 0:
+                        mean_val = col_data.mean()
+                        std_val = col_data.std()
+                        min_val = col_data.min()
+                        max_val = col_data.max()
+                        n_val = len(col_data)
+                        
+                        report_lines.append(
+                            f"{col:<30} {mean_val:>12.3f} {std_val:>12.3f} "
+                            f"{min_val:>12.3f} {max_val:>12.3f} {n_val:>8}"
+                        )
+                
+                if len(numeric_cols) > 15:
+                    report_lines.append(f"... and {len(numeric_cols) - 15} more properties")
+            
+            report_lines.append("")
+        else:
+            report_lines.append("-" * 80)
+            report_lines.append("DATASET STATISTICS")
+            report_lines.append("-" * 80)
+            report_lines.append("No dataset provided or dataset is empty.")
+            report_lines.append("")
+        
+        # ML Model Performance Section
+        if ml_results is not None and len(ml_results) > 0:
+            report_lines.append("-" * 80)
+            report_lines.append("MACHINE LEARNING MODEL PERFORMANCE")
+            report_lines.append("-" * 80)
+            
+            # Check if we have multiple models or single model
+            if 'models' in ml_results:
+                # Multiple models
+                for model_name, metrics in ml_results['models'].items():
+                    report_lines.append(f"\nModel: {model_name}")
+                    report_lines.append(f"  R² Score:        {metrics.get('r2_score', 0.0):.4f}")
+                    report_lines.append(f"  MAE:             {metrics.get('mae', 0.0):.4f}")
+                    report_lines.append(f"  RMSE:            {metrics.get('rmse', 0.0):.4f}")
+                    
+                    if 'n_features' in metrics:
+                        report_lines.append(f"  Features:        {metrics['n_features']}")
+                    if 'n_samples' in metrics:
+                        report_lines.append(f"  Training samples: {metrics['n_samples']}")
+            else:
+                # Single model
+                report_lines.append(f"Model Type:      {ml_results.get('model_type', 'Unknown')}")
+                report_lines.append(f"R² Score:        {ml_results.get('r2_score', 0.0):.4f}")
+                report_lines.append(f"MAE:             {ml_results.get('mae', 0.0):.4f}")
+                report_lines.append(f"RMSE:            {ml_results.get('rmse', 0.0):.4f}")
+                
+                if 'n_features' in ml_results:
+                    report_lines.append(f"Features:        {ml_results['n_features']}")
+                if 'n_samples' in ml_results:
+                    report_lines.append(f"Training samples: {ml_results['n_samples']}")
+            
+            report_lines.append("")
+        else:
+            report_lines.append("-" * 80)
+            report_lines.append("MACHINE LEARNING MODEL PERFORMANCE")
+            report_lines.append("-" * 80)
+            report_lines.append("No ML results provided.")
+            report_lines.append("")
+        
+        # Top Candidate Recommendations Section
+        if application_rankings is not None and len(application_rankings) > 0:
+            report_lines.append("-" * 80)
+            report_lines.append("TOP CANDIDATE RECOMMENDATIONS")
+            report_lines.append("-" * 80)
+            
+            # Get unique applications
+            if 'application' in application_rankings.columns:
+                applications = application_rankings['application'].unique()
+                
+                for app in applications:
+                    app_data = application_rankings[
+                        application_rankings['application'] == app
+                    ].copy()
+                    
+                    # Sort by rank or overall_score
+                    if 'rank' in app_data.columns:
+                        app_data = app_data.nsmallest(top_n, 'rank')
+                    elif 'overall_score' in app_data.columns:
+                        app_data = app_data.nlargest(top_n, 'overall_score')
+                    else:
+                        app_data = app_data.head(top_n)
+                    
+                    report_lines.append(f"\nApplication: {app}")
+                    report_lines.append(f"{'Rank':<6} {'Formula':<15} {'Score':>10} {'Confidence':>12}")
+                    report_lines.append("-" * 50)
+                    
+                    for _, row in app_data.iterrows():
+                        rank = row.get('rank', '-')
+                        formula = row.get('formula', 'Unknown')
+                        score = row.get('overall_score', 0.0)
+                        confidence = row.get('confidence', 0.0)
+                        
+                        report_lines.append(
+                            f"{rank:<6} {formula:<15} {score:>10.4f} {confidence:>12.2%}"
+                        )
+            else:
+                report_lines.append("Application rankings provided but missing 'application' column.")
+            
+            report_lines.append("")
+        else:
+            report_lines.append("-" * 80)
+            report_lines.append("TOP CANDIDATE RECOMMENDATIONS")
+            report_lines.append("-" * 80)
+            report_lines.append("No application rankings provided.")
+            report_lines.append("")
+        
+        report_lines.append("=" * 80)
+        report_lines.append("END OF REPORT")
+        report_lines.append("=" * 80)
+        
+        return "\n".join(report_lines)
+    
     def save_report(
         self,
         output_dir: Path,

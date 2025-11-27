@@ -314,3 +314,245 @@ class TestReportSection:
         
         assert len(parent.subsections) == 1
         assert parent.subsections[0].level == 2
+
+
+class TestSummaryReportGeneration:
+    """Tests for generate_summary_report functionality."""
+    
+    def test_generate_summary_report_with_complete_data(self, sample_data):
+        """Test report generation with complete data."""
+        generator = ReportGenerator(title="Complete Data Report")
+        
+        # Create ML results
+        ml_results = {
+            'model_type': 'RandomForest',
+            'r2_score': 0.85,
+            'mae': 15.3,
+            'rmse': 22.1,
+            'n_features': 10,
+            'n_samples': 100
+        }
+        
+        # Create application rankings
+        app_rankings = pd.DataFrame({
+            'application': ['aerospace_hypersonic', 'cutting_tools'] * 5,
+            'formula': ['SiC', 'TiC', 'B4C', 'WC', 'ZrC'] * 2,
+            'rank': list(range(1, 11)),
+            'overall_score': [0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50],
+            'confidence': [0.95] * 10
+        })
+        
+        report = generator.generate_summary_report(
+            data=sample_data,
+            ml_results=ml_results,
+            application_rankings=app_rankings,
+            top_n=5
+        )
+        
+        # Verify report structure
+        assert isinstance(report, str)
+        assert len(report) > 0
+        
+        # Verify sections are present
+        assert "DATASET STATISTICS" in report
+        assert "MACHINE LEARNING MODEL PERFORMANCE" in report
+        assert "TOP CANDIDATE RECOMMENDATIONS" in report
+        
+        # Verify dataset statistics
+        assert f"Total materials: {len(sample_data)}" in report
+        assert "Properties tracked:" in report
+        
+        # Verify ML results
+        assert "RandomForest" in report
+        assert "0.8500" in report  # R² score
+        
+        # Verify application rankings
+        assert "aerospace_hypersonic" in report
+        assert "cutting_tools" in report
+    
+    def test_generate_summary_report_with_incomplete_data(self):
+        """Test report generation with incomplete data."""
+        generator = ReportGenerator(title="Incomplete Data Report")
+        
+        # Only provide partial data
+        partial_data = pd.DataFrame({
+            'formula': ['SiC', 'TiC'],
+            'hardness': [28.0, 30.0]
+        })
+        
+        report = generator.generate_summary_report(
+            data=partial_data,
+            ml_results=None,
+            application_rankings=None,
+            top_n=5
+        )
+        
+        # Verify report completes
+        assert isinstance(report, str)
+        assert len(report) > 0
+        
+        # Verify missing data is indicated
+        assert "No ML results provided" in report
+        assert "No application rankings provided" in report
+        
+        # Verify partial data is reported
+        assert "Total materials: 2" in report
+    
+    def test_generate_summary_report_with_empty_data(self):
+        """Test report generation with empty data."""
+        generator = ReportGenerator(title="Empty Data Report")
+        
+        report = generator.generate_summary_report(
+            data=pd.DataFrame(),
+            ml_results={},
+            application_rankings=pd.DataFrame(),
+            top_n=5
+        )
+        
+        # Verify report completes without crashing
+        assert isinstance(report, str)
+        assert len(report) > 0
+        
+        # Verify empty data is indicated
+        assert "dataset is empty" in report or "No dataset provided" in report
+        assert "No ML results provided" in report
+        assert "No application rankings provided" in report
+    
+    def test_generate_summary_report_with_multiple_models(self):
+        """Test report generation with multiple ML models."""
+        generator = ReportGenerator(title="Multiple Models Report")
+        
+        ml_results = {
+            'models': {
+                'RandomForest': {
+                    'r2_score': 0.85,
+                    'mae': 15.3,
+                    'rmse': 22.1,
+                    'n_features': 10,
+                    'n_samples': 100
+                },
+                'GradientBoosting': {
+                    'r2_score': 0.88,
+                    'mae': 13.5,
+                    'rmse': 19.8,
+                    'n_features': 10,
+                    'n_samples': 100
+                }
+            }
+        }
+        
+        report = generator.generate_summary_report(
+            ml_results=ml_results,
+            top_n=5
+        )
+        
+        # Verify both models are reported
+        assert "RandomForest" in report
+        assert "GradientBoosting" in report
+        assert "0.8500" in report
+        assert "0.8800" in report
+    
+    def test_generate_summary_report_formatting(self, sample_data):
+        """Test report formatting and structure."""
+        generator = ReportGenerator(title="Formatting Test Report")
+        
+        report = generator.generate_summary_report(
+            data=sample_data,
+            top_n=5,
+            title="Custom Report Title"
+        )
+        
+        # Verify report has proper formatting
+        assert "=" * 80 in report  # Header/footer separators
+        assert "-" * 80 in report  # Section separators
+        
+        # Verify report has custom title
+        assert "Custom Report Title" in report
+        
+        # Verify report has timestamp
+        assert "Generated:" in report
+        
+        # Verify report has end marker
+        assert "END OF REPORT" in report
+    
+    def test_generate_summary_report_with_nan_values(self):
+        """Test report handles NaN values gracefully."""
+        generator = ReportGenerator(title="NaN Test Report")
+        
+        # Create data with NaN values
+        data_with_nan = pd.DataFrame({
+            'formula': ['SiC', 'TiC', 'B4C'],
+            'hardness': [28.0, np.nan, 32.0],
+            'density': [np.nan, 4.5, 2.5]
+        })
+        
+        ml_results = {
+            'r2_score': np.nan,
+            'mae': 15.3,
+            'rmse': np.nan
+        }
+        
+        report = generator.generate_summary_report(
+            data=data_with_nan,
+            ml_results=ml_results,
+            top_n=5
+        )
+        
+        # Verify report completes without crashing
+        assert isinstance(report, str)
+        assert len(report) > 0
+    
+    def test_generate_summary_report_property_statistics(self):
+        """Test property statistics section in report."""
+        generator = ReportGenerator(title="Property Stats Report")
+        
+        # Create data with known statistics
+        test_data = pd.DataFrame({
+            'hardness': [20.0, 25.0, 30.0, 35.0, 40.0],
+            'density': [3.0, 3.5, 4.0, 4.5, 5.0]
+        })
+        
+        report = generator.generate_summary_report(
+            data=test_data,
+            top_n=5
+        )
+        
+        # Verify property statistics are included
+        assert "Property Statistics:" in report
+        assert "hardness" in report
+        assert "density" in report
+        
+        # Verify statistics columns are present
+        assert "Mean" in report
+        assert "Std" in report
+        assert "Min" in report
+        assert "Max" in report
+    
+    def test_generate_summary_report_top_candidates(self):
+        """Test top candidates section in report."""
+        generator = ReportGenerator(title="Top Candidates Report")
+        
+        # Create application rankings with clear top candidates
+        app_rankings = pd.DataFrame({
+            'application': ['aerospace_hypersonic'] * 10,
+            'formula': [f'Material_{i}' for i in range(10)],
+            'rank': list(range(1, 11)),
+            'overall_score': [1.0 - i*0.05 for i in range(10)],
+            'confidence': [0.95] * 10
+        })
+        
+        report = generator.generate_summary_report(
+            application_rankings=app_rankings,
+            top_n=3
+        )
+        
+        # Verify top 3 candidates are shown
+        assert "Material_0" in report
+        assert "Material_1" in report
+        assert "Material_2" in report
+        
+        # Verify ranking information
+        assert "Rank" in report
+        assert "Formula" in report
+        assert "Score" in report
+        assert "Confidence" in report

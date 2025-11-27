@@ -10,7 +10,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.svm import SVR
 from sklearn.model_selection import cross_val_score, KFold
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
@@ -37,6 +37,7 @@ class ModelMetrics:
     r2_score: float
     rmse: float
     mae: float
+    mape: float
     r2_cv_mean: float
     r2_cv_std: float
     r2_confidence_interval: Tuple[float, float]
@@ -51,6 +52,7 @@ class ModelMetrics:
             'r2_score': self.r2_score,
             'rmse': self.rmse,
             'mae': self.mae,
+            'mape': self.mape,
             'r2_cv_mean': self.r2_cv_mean,
             'r2_cv_std': self.r2_cv_std,
             'r2_confidence_interval': self.r2_confidence_interval,
@@ -113,6 +115,7 @@ class TrainedModel:
             r2_score=metrics_dict['r2_score'],
             rmse=metrics_dict['rmse'],
             mae=metrics_dict['mae'],
+            mape=metrics_dict.get('mape', 0.0),  # Default for backward compatibility
             r2_cv_mean=metrics_dict['r2_cv_mean'],
             r2_cv_std=metrics_dict['r2_cv_std'],
             r2_confidence_interval=tuple(metrics_dict['r2_confidence_interval']),
@@ -159,6 +162,52 @@ class ModelTrainer:
         
         np.random.seed(random_seed)
     
+    def prepare_training_data(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series
+    ) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Prepare training data by removing invalid values.
+        
+        Removes rows with:
+        - Missing target values
+        - Infinite target values
+        - Non-numeric features
+        - Infinite feature values
+        
+        Args:
+            X: Feature DataFrame
+            y: Target Series
+        
+        Returns:
+            Cleaned X and y
+        """
+        # Remove rows with missing targets
+        valid_target_mask = y.notna()
+        X = X[valid_target_mask]
+        y = y[valid_target_mask]
+        
+        # Remove rows with infinite targets
+        finite_target_mask = np.isfinite(y)
+        X = X[finite_target_mask]
+        y = y[finite_target_mask]
+        
+        # Filter to numeric features only
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        X = X[numeric_cols]
+        
+        # Remove rows with any infinite feature values
+        finite_features_mask = np.all(np.isfinite(X), axis=1)
+        X = X[finite_features_mask]
+        y = y[finite_features_mask]
+        
+        # Reset indices
+        X = X.reset_index(drop=True)
+        y = y.reset_index(drop=True)
+        
+        return X, y
+    
     def train_random_forest(
         self,
         X_train: pd.DataFrame,
@@ -182,8 +231,8 @@ class ModelTrainer:
         """
         if hyperparameters is None:
             hyperparameters = {
-                'n_estimators': 100,
-                'max_depth': 10,
+                'n_estimators': 150,
+                'max_depth': 15,
                 'min_samples_split': 5,
                 'min_samples_leaf': 2,
                 'random_state': self.random_seed,
@@ -201,6 +250,55 @@ class ModelTrainer:
         return TrainedModel(
             model=model,
             model_type='RandomForest',
+            hyperparameters=hyperparameters,
+            metrics=metrics,
+            feature_names=list(X_train.columns),
+            feature_importances=feature_importances,
+        )
+    
+    def train_gradient_boosting(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        X_test: pd.DataFrame,
+        y_test: pd.Series,
+        hyperparameters: Optional[Dict[str, Any]] = None
+    ) -> TrainedModel:
+        """
+        Train Gradient Boosting model.
+        
+        Args:
+            X_train: Training features
+            y_train: Training target
+            X_test: Test features
+            y_test: Test target
+            hyperparameters: Optional hyperparameters (if None, uses defaults)
+        
+        Returns:
+            Trained model with metrics
+        """
+        if hyperparameters is None:
+            hyperparameters = {
+                'n_estimators': 150,
+                'learning_rate': 0.1,
+                'max_depth': 5,
+                'min_samples_split': 5,
+                'min_samples_leaf': 2,
+                'random_state': self.random_seed,
+            }
+        
+        model = GradientBoostingRegressor(**hyperparameters)
+        model.fit(X_train, y_train)
+        
+        # Calculate metrics
+        metrics = self._calculate_metrics(model, X_train, y_train, X_test, y_test)
+        
+        # Get feature importances
+        feature_importances = model.feature_importances_
+        
+        return TrainedModel(
+            model=model,
+            model_type='GradientBoosting',
             hyperparameters=hyperparameters,
             metrics=metrics,
             feature_names=list(X_train.columns),
@@ -320,6 +418,14 @@ class ModelTrainer:
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         mae = mean_absolute_error(y_test, y_pred)
         
+        # MAPE (Mean Absolute Percentage Error)
+        # Avoid division by zero by filtering out near-zero values
+        mask = np.abs(y_test) > 1e-10
+        if mask.sum() > 0:
+            mape = np.mean(np.abs((y_test[mask] - y_pred[mask]) / y_test[mask])) * 100
+        else:
+            mape = np.inf
+        
         # Cross-validation on training set
         cv = KFold(n_splits=self.cv_folds, shuffle=True, random_state=self.random_seed)
         cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='r2')
@@ -336,6 +442,7 @@ class ModelTrainer:
             r2_score=r2,
             rmse=rmse,
             mae=mae,
+            mape=mape,
             r2_cv_mean=r2_cv_mean,
             r2_cv_std=r2_cv_std,
             r2_confidence_interval=confidence_interval,
@@ -465,6 +572,9 @@ class ModelTrainer:
             models['RandomForest'] = self.optimize_random_forest(X_train, y_train, X_test, y_test)
         else:
             models['RandomForest'] = self.train_random_forest(X_train, y_train, X_test, y_test)
+        
+        # Gradient Boosting
+        models['GradientBoosting'] = self.train_gradient_boosting(X_train, y_train, X_test, y_test)
         
         # XGBoost (if available)
         if XGBOOST_AVAILABLE:
